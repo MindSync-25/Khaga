@@ -1,0 +1,15 @@
+{
+  "name": "khaga-storefront",
+  "version": "0.1.0",
+  "private": true,
+  "description": "KHAGA Collection 001 — deployable, read-only commerce preview",
+  "type": "module",
+  "engines": { "node": ">=22 <25" },
+  "scripts": {
+    "dev": "node --watch server.mjs",
+    "build": "node scripts/build.mjs",
+    "start": "node server.mjs",
+    "test": "node --test test/*.test.mjs",
+    "check": "npm test && npm run build"
+  }
+}

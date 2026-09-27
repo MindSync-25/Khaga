@@ -32,7 +32,7 @@ export function variant(product, colour) { return product.colours.includes(colou
 export function filterProducts({category='all',q='',sort='collection'}={}) {
   const query=String(q).trim().toLowerCase().slice(0,100);
   let result=products.filter(p=>(category==='all'||p.category===category)&&(!query||[p.name,p.note,...p.colours.map(c=>colours[c].name)].join(' ').toLowerCase().includes(query)));
-  if(sort==='price-asc')result=result.toSorted((a,b)=>a.price-b.price);
-  if(sort==='price-desc')result=result.toSorted((a,b)=>b.price-a.price);
+  if(sort==='price-asc')result=result.slice().sort((a,b)=>a.price-b.price);
+  if(sort==='price-desc')result=result.slice().sort((a,b)=>b.price-a.price);
   return result;
 }

@@ -1,4 +1,5 @@
 import {createServer} from 'node:http';
+import {gzipSync} from 'node:zlib';
 import {readFileSync,readdirSync} from 'node:fs';
 import {resolve,join,extname} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -9,7 +10,9 @@ import {home,collection,productPage,storyPage,helpPage,bagPage,notFound} from '.
 const publicRoot=fileURLToPath(new URL('../public/',import.meta.url));
 const types={'.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.svg':'image/svg+xml','.avif':'image/avif','.webp':'image/webp','.png':'image/png','.jpg':'image/jpeg','.json':'application/json; charset=utf-8'};
 const assets=new Map();
-function indexAssets(dir){for(const entry of readdirSync(dir,{withFileTypes:true})){const path=join(dir,entry.name);if(entry.isDirectory())indexAssets(path);else if(types[extname(path)]){const data=readFileSync(path);assets.set('/'+path.slice(publicRoot.length).replaceAll('\\','/'),{data,type:types[extname(path)],etag:'"'+createHash('sha256').update(data).digest('hex').slice(0,24)+'"'});}}}
+const compressedResponses=new Map();
+function acceptsGzip(header=''){return String(header).split(',').some(part=>{const [enc,...params]=part.trim().split(';');if(enc.trim()!=='gzip')return false;const q=params.map(p=>p.trim()).find(p=>p.startsWith('q='));return !q||Number(q.slice(2))>0;});}
+function indexAssets(dir){for(const entry of readdirSync(dir,{withFileTypes:true})){const path=join(dir,entry.name);if(entry.isDirectory())indexAssets(path);else if(types[extname(path)]){const data=readFileSync(path);assets.set('/'+path.slice(publicRoot.length).replaceAll('\\','/'),{data,type:types[extname(path)],etag:'W/"'+createHash('sha256').update(data).digest('hex').slice(0,24)+'"'});}}}
 indexAssets(publicRoot);
 const security={
  'X-Content-Type-Options':'nosniff',
@@ -26,7 +29,16 @@ export function createApp({username=process.env.PREVIEW_USERNAME||'',password=pr
  if(Boolean(username)!==Boolean(password))throw new Error('Set both PREVIEW_USERNAME and PREVIEW_PASSWORD, or neither.');
  return createServer((req,res)=>{
   const head=req.method==='HEAD';
-  const send=(status,body,type='text/html; charset=utf-8',extra={})=>{res.writeHead(status,{...security,'Cache-Control':'no-store','Content-Type':type,...extra,...(username?{'Cache-Control':'private, no-store'}:{})});res.end(head?'':body);};
+  const send=(status,body,type='text/html; charset=utf-8',extra={})=>{
+   let bytes=Buffer.isBuffer(body)?body:Buffer.from(String(body));
+   const headers={...security,'Cache-Control':'no-store','Content-Type':type,'Vary':'Accept-Encoding','X-KHAGA-Version':'0.3.0',...extra,...(username?{'Cache-Control':'private, no-store'}:{})};
+   if(bytes.length>1024&&/^(text\/|application\/json|image\/svg\+xml)/.test(type)&&acceptsGzip(req.headers['accept-encoding'])){
+    const key=createHash('sha256').update(bytes).digest('hex');
+    if(!compressedResponses.has(key)){compressedResponses.set(key,gzipSync(bytes));if(compressedResponses.size>96)compressedResponses.delete(compressedResponses.keys().next().value);}
+    bytes=compressedResponses.get(key);headers['Content-Encoding']='gzip';
+   }
+   headers['Content-Length']=bytes.length;res.writeHead(status,headers);res.end(head?'':bytes);
+  };
   try{
    if(username&&password){const expected='Basic '+Buffer.from(username+':'+password).toString('base64');if(!timingSafeEqual(digest(req.headers.authorization||''),digest(expected))){send(401,'Preview access requires authentication.','text/plain; charset=utf-8',{'WWW-Authenticate':'Basic realm="KHAGA preview", charset="UTF-8"'});return;}}
    if((req.url||'').length>4096){send(414,'Request URI too long.','text/plain');return;}
@@ -36,14 +48,14 @@ export function createApp({username=process.env.PREVIEW_USERNAME||'',password=pr
    // Checkout is closed on the server, regardless of browser state or env vars.
    if(path==='/api/checkout'){send(403,JSON.stringify({error:'PREVIEW_ONLY',message:'Orders and payments are not enabled.'}),'application/json');return;}
    if(!['GET','HEAD'].includes(req.method||'')){send(405,'Method not allowed.','text/plain',{'Allow':'GET, HEAD'});return;}
-   if(path==='/health'||path==='/api/health'){send(200,JSON.stringify({status:'ok',app:'khaga-storefront',version:'0.1.0',mode:'preview'}),'application/json');return;}
+   if(path==='/health'||path==='/api/health'){send(200,JSON.stringify({status:'ok',app:'khaga-storefront',version:'0.3.0',mode:'preview'}),'application/json');return;}
    if(path==='/robots.txt'){send(200,'User-agent: *\nDisallow: /\n','text/plain; charset=utf-8');return;}
    if(path==='/api/catalog'){send(200,catalog,'application/json; charset=utf-8',{'Cache-Control':'public, max-age=60'});return;}
    if(path==='/brand/wordmark.svg'||path==='/brand/emblem.svg'){send(200,brandSvg({wordmark:path.includes('wordmark'),emblem:path.includes('emblem')}),'image/svg+xml',{'Cache-Control':'public, max-age=3600'});return;}
    const art=path.match(/^\/media\/([a-z-]+)\/([a-z-]+)\/(front|back|detail)\.svg$/);
    if(art){const p=byId.get(art[1]);if(!p||!p.colours.includes(art[2])){send(404,'Image not found.','text/plain');return;}const transparent=url.searchParams.get('background')==='transparent',key=path+(transparent?'?transparent':'');if(!artworkCache.has(key))artworkCache.set(key,artwork(p,art[2],art[3],transparent));send(200,artworkCache.get(key),'image/svg+xml',{'Cache-Control':'public, max-age=3600'});return;}
    const asset=assets.get(path);
-   if(asset){if(req.headers['if-none-match']===asset.etag){res.writeHead(304,{...security,'ETag':asset.etag,'Cache-Control':username?'private, no-store':'public, max-age=3600'});res.end();return;}send(200,asset.data,asset.type,{'ETag':asset.etag,'Cache-Control':'public, max-age=3600'});return;}
+   if(asset){if(req.headers['if-none-match']===asset.etag){res.writeHead(304,{...security,'Vary':'Accept-Encoding','X-KHAGA-Version':'0.3.0','ETag':asset.etag,'Cache-Control':username?'private, no-store':'public, max-age=3600'});res.end();return;}send(200,asset.data,asset.type,{'ETag':asset.etag,'Cache-Control':'public, max-age=3600'});return;}
    if(path!=='/'&&path.endsWith('/')){send(308,'','text/plain',{'Location':path.slice(0,-1)+url.search});return;}
    if(path==='/'){send(200,home());return;}
    if(path==='/collection'||path==='/search'){send(200,collection(url.searchParams,path==='/search'));return;}

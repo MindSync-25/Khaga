@@ -26,7 +26,7 @@ npm start
 
 Open `http://localhost:3000`. `npm run dev` starts Node's watch mode.
 
-`npm run build` validates all pages, variant artwork and required files. There is no transpilation or generated output directory. Source files are the runtime.
+`npm run build` generates one deferred browser bundle (`public/site.js`) from the shared page templates, catalogue and controls, then validates all pages and artwork. No external bundler or runtime packages are required. The Node server entry and Hostinger settings stay the same. `npm start` also rebuilds the bundle via `prestart`.
 
 ## Hostinger: import from GitHub
 
@@ -57,7 +57,7 @@ After clicking Deploy, verify:
 
 1. Deployment logs show `Build validated: 7 product pages`.
 2. Runtime logs show `KHAGA preview running on port ...`.
-3. `https://khaga.slavant.com/health` returns status `ok`, app `khaga-storefront`, version `0.1.0`, mode `preview`.
+3. `https://khaga.slavant.com/health` returns status `ok`, app `khaga-storefront`, version `0.3.0`, mode `preview`.
 4. Images and styles load, a colour changes the product image, and the preview bag works on a phone.
 5. `POST /api/checkout` remains 403 with code `PREVIEW_ONLY`.
 
@@ -81,7 +81,10 @@ Do not commit actual credentials. Both values must be set together. Authenticati
 - `src/catalog.mjs`: names, proposed prices in paise, descriptions, colours and size choices.
 - `src/views.mjs`: server-rendered pages and content.
 - `public/styles.css`: desktop/mobile design system.
-- `public/app.js`: gallery, colour selection, dialogs and preview bag UI.
+- `public/app.js`: delegated gallery, colour, dialog, bag and local navigation controls.
+- `src/routes.mjs`: shared pure renderer for browser navigation.
+- `scripts/build-client.mjs`: combines the fixed module graph into one deferred script.
+- `public/editorial.css`: the v3 responsive editorial layer; original logo/artwork are unchanged.
 - `public/cart-model.mjs`: validated, versioned localStorage bag model.
 - `src/artwork.mjs`: concept garment illustration layers. Decorations are separate from the brand mark.
 - `public/brand/khaga-master.svg`: the single supplied emblem and wordmark silhouette. Do not generate substitute logos.
@@ -103,6 +106,14 @@ No city is part of the identity. Do not add Bengaluru, another location, fake fo
 
 ## Tests
 
-`npm test` runs 37 Node tests covering HTTP pages, all variant artwork, catalogue filtering, search escaping, 404s, security headers, path traversal rejection, disabled checkout, optional authentication and cart validation.
+`npm test` builds the client and runs 51 Node tests covering HTTP pages, all variant artwork, catalogue filtering, search escaping, 404s, security headers, path traversal rejection, disabled checkout, optional authentication and cart validation.
 
 See `docs/VALIDATION.md` for the actual local validation and its limitations.
+
+## 0.3.0 — fast interactions and editorial refresh
+
+Normal internal navigation, search and filtering use the same templates in the browser without document reloads. Colours, sizes and gallery views no longer depend on a separate `/api/catalog` request. URL history, native deep links and no-JavaScript page browsing remain available. Ctrl/Cmd clicks, downloads, external links and unsupported destinations retain native behavior. The browser bag is still a preview, never a submitted order.
+
+The package now includes one generated `site.js`, versioned script/style URLs, bounded image prewarming, gzip for text/SVG assets, and media retry feedback. Checkout remains blocked in Node. No payment, analytics or credential configuration changed.
+
+See `docs/INTERACTIONS_V3.md` for testing evidence, limitations and the live Hostinger verification checklist. The preceding v2 ZIP was not present on main; v3 builds on verified commit `fe6d2d8`.

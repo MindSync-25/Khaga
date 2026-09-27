@@ -22,7 +22,7 @@ test('Browser bundle parses and contains no unresolved module imports',()=>{
  assert.doesNotThrow(()=>new Script(bundle));assert.ok(!/^import\s/m.test(bundle));assert.ok(!/^export\s/m.test(bundle));
 });
 test('Controls and routing have no catalogue/page fetch bootstrap dependency',()=>{
- assert.ok(!/\bfetch\s*\(/.test(bundle));assert.ok(bundle.includes("document.addEventListener('click'"));
+ assert.ok(bundle.includes("document.getElementById('catalogue-data')"));assert.ok(!bundle.includes('await initCommerce'));assert.ok(bundle.includes('refreshCatalogue')); assert.ok(bundle.includes("document.addEventListener('click'"));
  assert.ok(bundle.includes("window.addEventListener('popstate'"));assert.ok(bundle.includes('history.pushState'));
 });
 test('The entire compressed interactive bundle remains under 22 KB',()=>{

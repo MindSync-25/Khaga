@@ -6,7 +6,7 @@ export function cleanItems(input,catalog){
  for(const item of input.slice(0,100)){
   if(!item||typeof item!=='object')continue;
   const p=catalog.products.find(p=>p.id===item.product);
-  if(!p||!p.colours.includes(item.colour)||!catalog.sizes.includes(item.size)||!Number.isInteger(item.quantity)||item.quantity<1)continue;
+  if(!p||!p.colours.includes(item.colour)||!(p.sizes||catalog.sizes).includes(item.size)||!Number.isInteger(item.quantity)||item.quantity<1)continue;
   const key=`${p.id}|${item.colour}|${item.size}`;
   const current=result.get(key);
   result.set(key,{product:p.id,colour:item.colour,size:item.size,quantity:Math.min(MAX_QUANTITY,(current?.quantity||0)+item.quantity)});

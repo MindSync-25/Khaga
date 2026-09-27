@@ -2,8 +2,8 @@
    cart and page templates into ONE deferred script. No API bootstrap required. */
 const $=(s,root=document)=>root.querySelector(s);
 const $$=(s,root=document)=>Array.from(root.querySelectorAll(s));
-const catalog={products,colours,sizes};
-const views=['front','back','detail'];
+
+
 const pageSelections=new Map();
 const preloadCache=new Map();
 const reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -31,7 +31,7 @@ function productState(){
  const p=byId.get(root.dataset.productDetail);if(!p)return null;
  const c=variant(p,root.dataset.currentColour);
  const key=p.id+'|'+c;
- if(!pageSelections.has(key))pageSelections.set(key,{size:'',view:'front'});
+ if(!pageSelections.has(key))pageSelections.set(key,{size:'',view:root.dataset.initialView||galleryViews(p,c)[0]});
  return {root,p,c,state:pageSelections.get(key)};
 }
 function rememberScroll(){
@@ -68,7 +68,7 @@ function routeTo(url,{push=true,preserveScroll=false,y=0}={}){
   if(source&&target)target.content=source.content;
  }
  if(push)updateURL(url);else currentURL=url;
- syncNavigation();renderCart();syncProduct();schedulePreload();
+ syncNavigation();renderCart();syncProduct();schedulePreload();refreshCatalogue();
  main.focus({preventScroll:true});
  window.scrollTo({top:preserveScroll?previousY:y,behavior:'instant'});
  if(url.hash){try{document.getElementById(decodeURIComponent(url.hash.slice(1)))?.scrollIntoView({behavior:'instant'});}catch{}}
@@ -101,16 +101,20 @@ function schedulePreload(){
 function syncProduct(){
  const s=productState();if(!s)return;
  const {root,p,c,state}=s;
+ if(!galleryViews(p,c).includes(state.view))state.view=galleryViews(p,c)[0];
+ if(state.size&&!(p.sizes||sizes).includes(state.size))state.size='';
  const img=$('.main-product-image',root),src=media(p,c,state.view);
  if(img.getAttribute('src')!==src)img.src=src;
- img.alt=`${p.name} in ${colours[c].name}, ${state.view} concept illustration`;
+ img.alt=p.media?.[c]?.[state.view]?.alt||`${p.name} in ${colours[c].name}, ${state.view} concept illustration`;
+ const rail=$('.gallery-thumbnails',root);
+ if(rail.dataset.views!==galleryViews(p,c).join('|')){rail.dataset.views=galleryViews(p,c).join('|');rail.innerHTML=galleryViews(p,c).map(v=>`<button type="button" class="thumbnail" data-view="${v}" aria-label="Show ${v} view"><img src="${media(p,c,v)}" alt="${e(v)} view" width="80" height="100"><span>${e(v)}</span></button>`).join('');}
  $('.gallery-view-label',root).textContent=state.view==='detail'?'Signature study':state.view==='back'?'Back view':'Front view';
  $('[data-colour-label]',root).textContent=colours[c].name;
  $$('[data-colour]',root).forEach(a=>{const active=a.dataset.colour===c;a.classList.toggle('selected',active);if(active)a.setAttribute('aria-current','true');else a.removeAttribute('aria-current');});
  $$('[data-view]',root).forEach(button=>{
   const active=button.dataset.view===state.view;button.classList.toggle('active',active);button.setAttribute('aria-pressed',String(active));
   const thumb=$('img',button),url=media(p,c,button.dataset.view);if(thumb.getAttribute('src')!==url)thumb.src=url;
-  thumb.alt=`${p.name} in ${colours[c].name}, ${button.dataset.view} study`;
+  thumb.alt=p.media?.[c]?.[button.dataset.view]?.alt||`${p.name} in ${colours[c].name}, ${button.dataset.view} study`;
  });
  $$('[data-size]',root).forEach(button=>{const active=button.dataset.size===state.size;button.classList.toggle('selected',active);button.setAttribute('aria-pressed',String(active));});
  $('[data-size-label]',root).textContent=state.size||'Select your size';
@@ -165,8 +169,8 @@ document.addEventListener('click',event=>{
   const bag=target.closest('[data-bag-open]');if(bag){event.preventDefault();renderCart();openDialog('bag-dialog',bag);return;}
   const c=target.closest('[data-colour]');if(c){event.preventDefault();selectColour(c);return;}
   const cardToggle=target.closest('[data-card-view]');if(cardToggle){event.preventDefault();const root=cardToggle.closest('.product-card');const on=root.classList.toggle('show-back');cardToggle.textContent=on?'Front view':'Back view';cardToggle.setAttribute('aria-pressed',String(on));cardToggle.setAttribute('aria-label',`Show ${on?'front':'back'} of ${byId.get(root.dataset.product).name}`);return;}
-  const size=target.closest('[data-size]');if(size){event.preventDefault();const s=productState();if(s&&sizes.includes(size.dataset.size)){s.state.size=size.dataset.size;$('#size-error',s.root).hidden=true;syncProduct();}return;}
-  const gallery=target.closest('[data-view],[data-gallery-next]');if(gallery){event.preventDefault();const s=productState();if(s){s.state.view=gallery.dataset.view||views[(views.indexOf(s.state.view)+1)%3];syncProduct();}return;}
+  const size=target.closest('[data-size]');if(size){event.preventDefault();const s=productState();if(s&&(s.p.sizes||sizes).includes(size.dataset.size)){s.state.size=size.dataset.size;$('#size-error',s.root).hidden=true;syncProduct();}return;}
+  const gallery=target.closest('[data-view],[data-gallery-next]');if(gallery){event.preventDefault();const s=productState();if(s){s.state.view=gallery.dataset.view||galleryViews(s.p,s.c)[(galleryViews(s.p,s.c).indexOf(s.state.view)+1)%galleryViews(s.p,s.c).length];syncProduct();}return;}
   const zoom=target.closest('[data-zoom]');if(zoom){const s=productState();if(s){const img=$('[data-zoom-image]');img.src=media(s.p,s.c,s.state.view);img.alt=`${s.p.name} — ${colours[s.c].name}, ${s.state.view} study`;$('[data-zoom-caption]').textContent=img.alt;openDialog('zoom-dialog',zoom);}return;}
   const add=target.closest('[data-add-product]');if(add){event.preventDefault();addProduct(add);return;}
   const quantity=target.closest('[data-quantity]');if(quantity){event.preventDefault();const i=Number(quantity.dataset.quantity),delta=Number(quantity.dataset.delta),item=items[i];if(item&&[-1,1].includes(delta)){item.quantity=Math.max(1,Math.min(MAX_QUANTITY,item.quantity+delta));const dialog=quantity.closest('dialog');saveBag();const root=dialog||$('#main');$(`[data-quantity="${i}"][data-delta="${delta}"]:not(:disabled)`,root)?.focus({preventScroll:true});}return;}
@@ -197,6 +201,23 @@ document.addEventListener('error',event=>{
  const button=document.createElement('button');button.type='button';button.className='media-retry';button.dataset.retryImage='';button.textContent='Image unavailable — retry';gallery.append(button);
 },true);
 document.addEventListener('load',event=>{if(event.target instanceof HTMLImageElement&&event.target.classList.contains('main-product-image'))event.target.closest('.gallery-main')?.querySelector('[data-retry-image]')?.remove();},true);
+
+let lastCatalogueCheck=Date.now(),catalogueRefresh=null;
+async function refreshCatalogue(force=false){
+ if(!catalog.managed||catalogueRefresh||(!force&&Date.now()-lastCatalogueCheck<30000))return;
+ lastCatalogueCheck=Date.now();
+ catalogueRefresh=(async()=>{
+  try{const response=await fetch('/api/catalog',{credentials:'same-origin',cache:'no-store',signal:AbortSignal.timeout(8000)});if(!response.ok)return;
+   const next=await response.json();if(next.version===catalog.version)return;
+   catalog.replace(next);items=cleanItems(items,catalog);preloadCache.clear();
+   const url=new URL(currentURL);safeRoute(url,{push:false,preserveScroll:true});announce('The collection has been updated.');
+  }catch{/* Keep the current published snapshot on a transient refresh failure. */}
+  finally{catalogueRefresh=null;}
+ })();return catalogueRefresh;
+}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')refreshCatalogue();});
+window.addEventListener('focus',()=>refreshCatalogue());
+
 renderCart();syncProduct();syncNavigation();schedulePreload();
 document.documentElement.classList.add('js-ready');
 document.documentElement.dataset.khagaReady=UI_BUILD;

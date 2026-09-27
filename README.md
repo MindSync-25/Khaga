@@ -1,22 +1,35 @@
-# KHAGA — Collection 001: Ascent
+# KHAGA 0.4.0 — catalogue management, sales still closed
 
-A deployable **preview** storefront for `khaga.slavant.com`.
+Storefront: `khaga.slavant.com`. Entry: `server.mjs`. Hostinger preset: **Other**, Node **22**, root `/`, build script `build`.
 
-## What is included
+This release implements **phase 1** of the operations roadmap. It does **not** implement live/test payment checkout, stored customer orders, emails, shipping, tax calculation or inventory reservations. `/api/checkout` remains hard-disabled with `403 PREVIEW_ONLY`. The existing Slavant site and DNS are not part of this change.
 
-- Responsive editorial homepage, seven product pages, collection filters and search.
-- Origin, Solar, Flight, Eclipse and Ascent tees; Form and Nocturne shirts.
-- Colour-specific front, back and signature illustrations using one supplied KHAGA master emblem.
-- Size selection, a persistent local preview bag, quantity controls and indicative INR subtotals.
-- Story, sizing, care, delivery/returns status, privacy and preview-terms pages.
-- No third-party scripts, external fonts, database, API keys or runtime dependencies.
-- Server-rendered HTML, progressive navigation, native accessible dialogs and reduced-motion styles.
+## What is implemented
 
-This is plain **Node.js + HTML/CSS/JavaScript**, not Next.js. It deliberately uses no npm runtime dependencies so the initial deployment can be validated independently of a package registry. The catalogue and artwork modules are kept separate from the UI for later changes.
+- `/admin`: one private owner account, password hashing, revocable HttpOnly sessions, expiry, persistent login limits, same-origin checks and CSRF protection.
+- Persistent products, colours, per-product sizes, price in paise and availability records.
+- Separate draft and published snapshots. Save privately; explicitly publish or unpublish. Optimistic version checks prevent silent lost edits.
+- Front/back/detail/model imagery per colour, descriptions, ordering, replacement and detachment.
+- Private immutable originals. New uploads are not public merely because they have a URL. Every media request checks whether an image is in a published product or the requester is signed in.
+- One-time, repeat-safe import of the seven existing concepts. New products start as hidden drafts. Import does not overwrite existing edits.
+- Persistent stock/preorder capacity and dispatch-day records. These are planning records, **not reservations** and not yet enforced for checkout.
+- Activity log of product/media mutations without passwords, tokens or request bodies.
+- The original master logo and garment artwork remain byte-for-byte unchanged.
+- Fast navigation, colour/size selection, gallery and browser bag remain. Public catalogue data is embedded per response, not baked into the browser script. A background check refreshes managed catalogues on navigation/focus when at least 30 seconds have passed; colour clicks do not wait on an API.
 
-## Run locally
+## Storage modes
 
-Use Node.js 22 (tested on 22.16.0) or 24.
+| Mode | Purpose |
+|---|---|
+| `preview` (default) | Existing seeded read-only storefront. Admin disabled. No external account needed. |
+| `supabase` | Production adapter for persistent Postgres documents and a **private** Storage bucket. Requires configuration and migration. No resources have been provisioned by this code. |
+| `sqlite` | Local development/automated tests only. Requires explicit loopback origin, development opt-in and a data directory outside the repository. Rejected in production. |
+
+Using external persistent storage keeps product data and uploads outside Hostinger's deployment directory. This does not imply any Supabase plan is unlimited/free or that your Hostinger plan includes a database. Review the provider's current terms and usage limits before provisioning. No paid resources were created.
+
+## Run / validate
+
+Node 22.16+ (or 24) is recommended. No npm runtime dependencies.
 
 ```sh
 npm ci
@@ -24,96 +37,42 @@ npm run check
 npm start
 ```
 
-Open `http://localhost:3000`. `npm run dev` starts Node's watch mode.
+The build generates `public/site.js` from shared browser-safe catalogue/view/router modules. It never bundles the management code, owner hash, storage key or unpublished records. `npm start` rebuilds via `prestart`.
 
-`npm run build` generates one deferred browser bundle (`public/site.js`) from the shared page templates, catalogue and controls, then validates all pages and artwork. No external bundler or runtime packages are required. The Node server entry and Hostinger settings stay the same. `npm start` also rebuilds the bundle via `prestart`.
+The server uses `PORT` from Hostinger and binds to `0.0.0.0`. Do not guess/set a new production port.
 
-## Hostinger: import from GitHub
+## Enable the owner workspace
 
-Deploy this repository as the **KHAGA subdomain website only**. Do not change the existing `slavant.com` site, its files or its email/DNS records.
+Follow **[docs/ADMIN_V4.md](docs/ADMIN_V4.md)**. The implementation is not configured or verified against a real Supabase project yet. Do not enable admin until the migration, private bucket and server-only secret are ready. There is **no default admin password** or public account-registration endpoint.
 
-| Field | Value |
-|---|---|
-| Repository | `MindSync-25/Khaga` |
-| Branch | `main` |
-| Application / framework | **Other** (`other`), not Next.js |
-| Node.js | **22** |
-| Root directory | `/` (repository root) |
-| Package manager | npm |
-| Install command, if shown | `npm ci` |
-| Build script | `build` |
-| Full build command, if shown instead | `npm run build` |
-| Entry file | **`server.mjs`** (relative to repository root) |
-| Start command, if shown | `npm start` |
-| Output directory | Leave blank; Other ignores it when an entry file is set |
-| Required secrets | None |
+Basic steps:
+1. Create/use a dedicated Supabase project; run `migrations/001_management.sql` as its owner.
+2. Generate your owner password hash locally with `npm run admin:password`.
+3. Set `CATALOG_DRIVER=supabase`, `APP_ORIGIN`, `SUPABASE_URL`, server-only `SUPABASE_SECRET_KEY`, `ADMIN_ENABLED=true`, `ADMIN_EMAIL` and `ADMIN_PASSWORD_HASH` in Hostinger environment variables.
+4. Deploy, open `/admin`, sign in and explicitly import the seven existing concepts.
+5. Validate a real save → publish → new storefront visit → restart/redeploy cycle and private image access before relying on the integration.
 
-The server binds to `0.0.0.0` and uses Hostinger's `PORT` environment variable, falling back to 3000 locally. Do not set a guessed production port.
+An empty managed database gives an empty collection until import; it never silently falls back to stale seed data when a database is unavailable. Invalid management config fails startup rather than leaving an unprotected admin.
 
-Hostinger reference: https://docs.hostinger.com/node.js/build-settings
-GitHub import reference: https://docs.hostinger.com/node.js/github
+## Authentication / privacy notes
 
-After clicking Deploy, verify:
+Production uses `__Host-khaga_admin` with Secure, HttpOnly, SameSite=Strict, Path=/ and no Domain attribute. Session tokens are random; only their digest is stored. Owner password changes invalidate old sessions. Logout revokes the current session. The owner identity is deployment configuration, not supplied by a request.
 
-1. Deployment logs show `Build validated: 7 product pages`.
-2. Runtime logs show `KHAGA preview running on port ...`.
-3. `https://khaga.slavant.com/health` returns status `ok`, app `khaga-storefront`, version `0.3.0`, mode `preview`.
-4. Images and styles load, a colour changes the product image, and the preview bag works on a phone.
-5. `POST /api/checkout` remains 403 with code `PREVIEW_ONLY`.
+Optional sitewide preview authentication still uses BOTH `PREVIEW_USERNAME` and `PREVIEW_PASSWORD`. This is separate from admin authentication and also protects public media and health routes. No customer accounts or payment details are collected.
 
-A successful local test is **not** confirmation of Hostinger deployment or its GitHub connection. Confirm these in hPanel. Once automatic deployment is enabled, a push to `main` can publish a new preview.
+All real credentials must stay in Hostinger environment configuration. Never commit `.env`, password hashes, API keys, database files or real customer details. The repository's `.env.example` contains only placeholders; the server does not automatically load a `.env` file.
 
-## Optional private preview
+## Relevant files
 
-The site is publicly accessible by default. `noindex` and `robots.txt` are not authentication.
+- `src/management/`: config, authentication, catalogue validation, persistence adapters, private media and admin routes.
+- `migrations/001_management.sql`: Supabase schema/RPCs/private bucket; grants restricted to server role.
+- `public/admin/`, `public/admin.js`, `public/admin.css`: owner workspace.
+- `src/catalog-core.mjs`, `src/view-core.mjs`, `src/route-core.mjs`: shared public rendering without seeded/private data in the browser bundle.
+- `src/catalog.mjs`: unchanged server-side initial concepts for preview/import only.
+- `public/brand/khaga-master.svg`, `src/artwork.mjs`: original approved signature/artwork; do not substitute new logos.
 
-Set BOTH environment variables in Hostinger to require HTTP Basic Authentication:
+## Validation and limitations
 
-```text
-PREVIEW_USERNAME=your-review-username
-PREVIEW_PASSWORD=your-long-unique-password
-```
+See **[docs/VALIDATION_V4.md](docs/VALIDATION_V4.md)** for commands and actual results. Local HTTP/database tests and offline browser tests are separate. Offline browser mocks are not proof of real Supabase grants, native cookie behaviour, Safari, physical phone or Hostinger deployment success.
 
-Do not commit actual credentials. Both values must be set together. Authentication also protects assets, API routes and the health endpoint. Authenticated responses are private and not cached publicly. Hostinger must provide HTTPS.
-
-## Edit the collection
-
-- `src/catalog.mjs`: names, proposed prices in paise, descriptions, colours and size choices.
-- `src/views.mjs`: server-rendered pages and content.
-- `public/styles.css`: desktop/mobile design system.
-- `public/app.js`: delegated gallery, colour, dialog, bag and local navigation controls.
-- `src/routes.mjs`: shared pure renderer for browser navigation.
-- `scripts/build-client.mjs`: combines the fixed module graph into one deferred script.
-- `public/editorial.css`: the v3 responsive editorial layer; original logo/artwork are unchanged.
-- `public/cart-model.mjs`: validated, versioned localStorage bag model.
-- `src/artwork.mjs`: concept garment illustration layers. Decorations are separate from the brand mark.
-- `public/brand/khaga-master.svg`: the single supplied emblem and wordmark silhouette. Do not generate substitute logos.
-- `public/assets/campaign.svg`: cropped existing Ascent campaign concept, embedded as AVIF for a self-contained asset.
-
-No city is part of the identity. Do not add Bengaluru, another location, fake founding dates, fake stock, fake reviews or unsupported fabric claims.
-
-## Important: not ready to accept orders
-
-- The checkout API is hard-disabled, not merely hidden by the browser.
-- No live payments, order database, inventory reservations, tax calculation or shipping integration exists.
-- Prices are indicative proposals, not current offers. Colourways are concepts, not confirmed supplier stock.
-- The bag is saved only on this browser, and never sent as an order. It contains no personal/payment information.
-- The S–XXL controls are demonstration options, not a final sizing chart.
-- Product pictures are digital design studies; the campaign is existing AI concept imagery. They must not substitute for approved product photographs.
-- Final fabric composition, measurements, fit, embroidery, colour, pricing, availability and care must be approved on samples.
-- Business identity, customer support, legal policies, payment verification/webhooks, shipping and returns must be implemented before opening orders.
-- The existing Slavant website has not been modified by this code.
-
-## Tests
-
-`npm test` builds the client and runs 51 Node tests covering HTTP pages, all variant artwork, catalogue filtering, search escaping, 404s, security headers, path traversal rejection, disabled checkout, optional authentication and cart validation.
-
-See `docs/VALIDATION.md` for the actual local validation and its limitations.
-
-## 0.3.0 — fast interactions and editorial refresh
-
-Normal internal navigation, search and filtering use the same templates in the browser without document reloads. Colours, sizes and gallery views no longer depend on a separate `/api/catalog` request. URL history, native deep links and no-JavaScript page browsing remain available. Ctrl/Cmd clicks, downloads, external links and unsupported destinations retain native behavior. The browser bag is still a preview, never a submitted order.
-
-The package now includes one generated `site.js`, versioned script/style URLs, bounded image prewarming, gzip for text/SVG assets, and media retry feedback. Checkout remains blocked in Node. No payment, analytics or credential configuration changed.
-
-See `docs/INTERACTIONS_V3.md` for testing evidence, limitations and the live Hostinger verification checklist. The preceding v2 ZIP was not present on main; v3 builds on verified commit `fe6d2d8`.
+Before accepting orders: verify real samples/measurements/media, persistent catalogue setup, then implement guest checkout, authoritative totals, payment verification/idempotent webhooks, stored orders and manual fulfilment. Phase 2 is still outstanding. No sales switch exists in this release.

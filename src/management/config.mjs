@@ -1,34 +1,73 @@
 import {resolve, isAbsolute} from 'node:path';
 import {fileURLToPath} from 'node:url';
 const root = fileURLToPath(new URL('../../', import.meta.url));
+
+// Diagnostics contain field names and fixed guidance only, never submitted values.
+export class ConfigurationError extends Error {
+  constructor(issues) {
+    super(issues.map(i => `${i.field}: ${i.message}`).join(' '));
+    this.name = 'ConfigurationError';
+    this.code = 'CONFIGURATION_INVALID';
+    this.issues = issues;
+  }
+}
+const text = (env, name) => String(env[name] ?? '').trim();
 export function managementConfig(env = process.env) {
-  const driver = env.CATALOG_DRIVER || 'preview';
-  if (!['preview','supabase','sqlite'].includes(driver)) throw new Error('Unsupported CATALOG_DRIVER.');
+  const issues = [];
+  const add = (field, code, message) => issues.push({field, code, message});
+  const bool = name => {
+    const value = text(env, name).toLowerCase();
+    if (value && !['true','false'].includes(value)) add(name, 'BOOLEAN_FORMAT', 'Use true or false without quotation marks.');
+    return value === 'true';
+  };
+  const driver = text(env, 'CATALOG_DRIVER').toLowerCase() || 'preview';
+  const enabled = bool('ADMIN_ENABLED');
+  if (!['preview','supabase','sqlite'].includes(driver)) {
+    add('CATALOG_DRIVER', 'DRIVER_FORMAT', 'Use preview or supabase without quotation marks; sqlite is local-development only.');
+    throw new ConfigurationError(issues);
+  }
   if (driver === 'preview') {
-    if (env.ADMIN_ENABLED === 'true') throw new Error('Admin requires a persistent catalogue driver.');
+    if (enabled) add('ADMIN_ENABLED','PERSISTENCE_REQUIRED','Admin requires a persistent catalogue driver. Keep admin false while using preview.');
+    if (issues.length) throw new ConfigurationError(issues);
     return {driver, enabled:false};
   }
-  const origin = new URL(env.APP_ORIGIN || '');
-  if (origin.pathname !== '/' || origin.search || origin.hash || origin.username || origin.password) throw new Error('APP_ORIGIN must be a bare origin.');
-  const local = ['localhost','127.0.0.1','[::1]'].includes(origin.hostname);
-  if (origin.protocol !== 'https:' && !(local && env.NODE_ENV !== 'production' && env.ALLOW_LOCAL_ADMIN === 'true')) throw new Error('Management requires HTTPS outside explicitly enabled local development.');
+  const parseOrigin = (field, httpsOnly) => {
+    const value = text(env, field);
+    let url;
+    try { url = new URL(value); } catch { add(field,'ORIGIN_FORMAT','Enter the complete HTTPS project or site URL, not a database connection string.'); return null; }
+    if (url.pathname !== '/' || url.search || url.hash || url.username || url.password || !['http:','https:'].includes(url.protocol) || (httpsOnly && url.protocol !== 'https:')) {
+      add(field,'ORIGIN_FORMAT','Use a bare HTTPS origin without a path, credentials, query or quotation marks.'); return null;
+    }
+    return url;
+  };
+  const origin = parseOrigin('APP_ORIGIN', false);
+  const local = origin && ['localhost','127.0.0.1','[::1]'].includes(origin.hostname);
+  const localAllowed = bool('ALLOW_LOCAL_ADMIN');
+  const production = text(env,'NODE_ENV').toLowerCase() === 'production';
+  if (origin && origin.protocol !== 'https:' && !(local && !production && localAllowed)) add('APP_ORIGIN','HTTPS_REQUIRED','Management requires HTTPS outside explicitly enabled local development.');
+  const dataDir = text(env,'KHAGA_DATA_DIR');
   if (driver === 'sqlite') {
-    if (!local || env.NODE_ENV === 'production' || env.ALLOW_LOCAL_ADMIN !== 'true') throw new Error('SQLite is development-only; use Supabase for deployment.');
-    if (!env.KHAGA_DATA_DIR || !isAbsolute(env.KHAGA_DATA_DIR)) throw new Error('KHAGA_DATA_DIR must be an absolute local data directory.');
-    const path=resolve(env.KHAGA_DATA_DIR);
-    if (path === root.slice(0,-1) || path.startsWith(root)) throw new Error('Store development data outside the source/deployment directory.');
+    if (!local || production || !localAllowed) add('CATALOG_DRIVER','LOCAL_ONLY','SQLite is development-only; use Supabase for deployment.');
+    if (!dataDir || !isAbsolute(dataDir)) add('KHAGA_DATA_DIR','DATA_DIRECTORY','Use an absolute local data directory outside the source/deployment directory.');
+    else { const path = resolve(dataDir); if (path === root.slice(0,-1) || path.startsWith(root)) add('KHAGA_DATA_DIR','DATA_DIRECTORY','Store development data outside the source/deployment directory.'); }
   }
   let supabaseURL;
-  if(driver === 'supabase') {
-    supabaseURL = new URL(env.SUPABASE_URL || '');
-    if(supabaseURL.protocol !== 'https:' || supabaseURL.username || supabaseURL.password || supabaseURL.search || supabaseURL.hash || supabaseURL.pathname !== '/') throw new Error('SUPABASE_URL must be an HTTPS origin.');
-    if (!/^sb_secret_[A-Za-z0-9_-]{16,}$/.test(env.SUPABASE_SECRET_KEY || '')) throw new Error('Use a server-only Supabase secret API key, not a publishable key.');
+  const secretKey = text(env,'SUPABASE_SECRET_KEY');
+  const bucket = text(env,'SUPABASE_MEDIA_BUCKET') || 'khaga-product-media';
+  if (driver === 'supabase') {
+    supabaseURL = parseOrigin('SUPABASE_URL', true);
+    if (!secretKey) add('SUPABASE_SECRET_KEY','KEY_MISSING','Set the server-only secret API key on the KHAGA application.');
+    else if (secretKey.startsWith('sb_publishable_') || secretKey.startsWith('eyJ')) add('SUPABASE_SECRET_KEY','KEY_TYPE','Use a server-only sb_secret_ key, not a publishable key or legacy JWT.');
+    // The provider validates the opaque token. Reject clearly malformed copies,
+    // without assuming its payload has only base64url characters.
+    else if (!secretKey.startsWith('sb_secret_') || secretKey.length < 26 || secretKey.length > 1024 || /[^\x21-\x7e]|["'`]/.test(secretKey)) add('SUPABASE_SECRET_KEY','KEY_FORMAT','Paste the complete sb_secret_ key with no embedded whitespace or surrounding quotation marks.');
+    if (!/^[a-z0-9][a-z0-9_-]{0,99}$/.test(bucket)) add('SUPABASE_MEDIA_BUCKET','BUCKET_FORMAT','Enter the bucket ID only, such as khaga-product-media.');
   }
-  const enabled = env.ADMIN_ENABLED === 'true';
-  const email=(env.ADMIN_EMAIL || '').trim().toLowerCase();
-  const passwordHash=env.ADMIN_PASSWORD_HASH || '';
-  if(enabled && (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !/^scrypt\$65536\$8\$2\$[a-f0-9]{32}\$[a-f0-9]{128}$/.test(passwordHash))) throw new Error('Set ADMIN_EMAIL and a hash generated with npm run admin:password.');
+  const email = text(env,'ADMIN_EMAIL').toLowerCase();
+  const passwordHash = text(env,'ADMIN_PASSWORD_HASH');
+  if (enabled && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) add('ADMIN_EMAIL','EMAIL_FORMAT','Set a valid owner sign-in email address.');
+  if (enabled && !/^scrypt\$65536\$8\$2\$[a-f0-9]{32}\$[a-f0-9]{128}$/.test(passwordHash)) add('ADMIN_PASSWORD_HASH','HASH_FORMAT','Paste the complete hash generated by npm run admin:password; preserve every dollar sign and do not paste your plain password.');
+  if (issues.length) throw new ConfigurationError(issues);
   return {driver,enabled,origin:origin.origin,secure:origin.protocol==='https:',email,passwordHash,
-    dataDir:env.KHAGA_DATA_DIR, supabaseURL:supabaseURL?.origin, secretKey:env.SUPABASE_SECRET_KEY,
-    bucket:env.SUPABASE_MEDIA_BUCKET || 'khaga-product-media', sessionHours:8};
+    dataDir,supabaseURL:supabaseURL?.origin,secretKey,bucket,sessionHours:8};
 }

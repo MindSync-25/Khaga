@@ -15,6 +15,7 @@
     "check": "npm test && npm run build",
     "prestart": "node scripts/build-client.mjs",
     "admin:password": "node scripts/admin-password.mjs",
-    "admin:seed": "node scripts/seed-catalogue.mjs"
+    "admin:seed": "node scripts/seed-catalogue.mjs",
+    "admin:check": "node scripts/admin-check.mjs"
   }
 }

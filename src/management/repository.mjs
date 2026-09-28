@@ -8,11 +8,14 @@ export class SupabaseRepository {
  constructor(config,fetcher=fetch){this.config=config;this.fetcher=fetcher;this.driver='supabase';}
  async request(path,{method='GET',json,body,headers={}}={}){
   let response;try{response=await this.fetcher(this.config.supabaseURL+path,{method,headers:{apikey:this.config.secretKey,...(json!==undefined?{'Content-Type':'application/json'}:{}),...headers},body:json!==undefined?JSON.stringify(json):body,signal:AbortSignal.timeout(12000),redirect:'error'});}catch{throw new HttpError(503,'STORAGE_UNAVAILABLE','The persistent store is temporarily unavailable.');}
-  if(!response.ok){if(response.status===422)throw new HttpError(422,'STORE_VALIDATION','The saved data conflicts with an existing published colour. Refresh and use a unique colour key.');if(response.status===409)throw new HttpError(409,'EDIT_CONFLICT','This item changed elsewhere. Reload it before saving.');throw new HttpError(503,'STORAGE_UNAVAILABLE','The persistent store request did not complete.');}
+  if(!response.ok){const diagnostics={401:['STORAGE_AUTH_FAILED','Supabase rejected server authentication. Verify the key belongs to this project.'],403:['STORAGE_ACCESS_DENIED','Supabase denied this operation. Check the migration grants and server key.'],404:['STORAGE_NOT_FOUND','A required Supabase function or private bucket was not found.'],429:['STORAGE_RATE_LIMITED','Supabase requested a slower retry.']};if(diagnostics[response.status]){const [code,message]=diagnostics[response.status];throw new HttpError(503,code,message);}if(response.status===422)throw new HttpError(422,'STORE_VALIDATION','The saved data conflicts with an existing published colour. Refresh and use a unique colour key.');if(response.status===409)throw new HttpError(409,'EDIT_CONFLICT','This item changed elsewhere. Reload it before saving.');throw new HttpError(503,'STORAGE_UNAVAILABLE','The persistent store request did not complete.');}
   return response;
  }
  async rpc(name,args){return (await this.request('/rest/v1/rpc/khaga_'+name,{method:'POST',json:args})).json();}
- async ready(){const v=await this.rpc('status',{});requireThat(v.schema===1,503,'SCHEMA_REQUIRED','Apply the KHAGA database migration first.');const b=await(await this.request('/storage/v1/bucket/'+encodeURIComponent(this.config.bucket))).json();requireThat(b.public===false,503,'PRIVATE_BUCKET_REQUIRED','KHAGA product media must use a private bucket.');}
+ async ready(){
+  try{const v=await this.rpc('status',{});requireThat(v?.schema===1,503,'SCHEMA_REQUIRED','Apply the KHAGA database migration first.');}catch(error){error.stage='schema';throw error;}
+  try{const b=await(await this.request('/storage/v1/bucket/'+encodeURIComponent(this.config.bucket))).json();requireThat(b.public===false,503,'PRIVATE_BUCKET_REQUIRED','KHAGA product media must use a private bucket.');}catch(error){error.stage='media';throw error;}
+ }
  async get(kind,id){validKey(kind,id);return record(await this.rpc('get',{p_kind:kind,p_id:id}));}
  async list(kind){requireThat(kinds.has(kind),400,'INVALID_KEY','Invalid storage kind.');return (await this.rpc('list',{p_kind:kind})).map(record);}
  async cas(kind,id,expected,body,actor='system'){validKey(kind,id);return record(await this.rpc('write',{p_kind:kind,p_id:id,p_expected:expected,p_body:body,p_actor:actor}));}
@@ -36,7 +39,7 @@ export class SQLiteRepository {
  }
  async ready(){}
  async get(kind,id){validKey(kind,id);return record(this.db.prepare('SELECT * FROM documents WHERE kind=? AND id=?').get(kind,id));}
- async list(kind){return this.db.prepare('SELECT * FROM documents WHERE kind=? ORDER BY id').all(kind).map(record);}
+ async list(kind){requireThat(kinds.has(kind),400,'INVALID_KEY','Invalid storage kind.');return this.db.prepare('SELECT * FROM documents WHERE kind=? ORDER BY id').all(kind).map(record);}
  async cas(kind,id,expected,body,actor='system'){
   validKey(kind,id);this.db.exec('BEGIN IMMEDIATE');
   try{

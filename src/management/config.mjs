@@ -1,5 +1,6 @@
 import {resolve, isAbsolute} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {secretKeyIssue} from './secret-key-format.mjs';
 const root = fileURLToPath(new URL('../../', import.meta.url));
 
 // Diagnostics contain field names and fixed guidance only, never submitted values.
@@ -56,11 +57,8 @@ export function managementConfig(env = process.env) {
   const bucket = text(env,'SUPABASE_MEDIA_BUCKET') || 'khaga-product-media';
   if (driver === 'supabase') {
     supabaseURL = parseOrigin('SUPABASE_URL', true);
-    if (!secretKey) add('SUPABASE_SECRET_KEY','KEY_MISSING','Set the server-only secret API key on the KHAGA application.');
-    else if (secretKey.startsWith('sb_publishable_') || secretKey.startsWith('eyJ')) add('SUPABASE_SECRET_KEY','KEY_TYPE','Use a server-only sb_secret_ key, not a publishable key or legacy JWT.');
-    // The provider validates the opaque token. Reject clearly malformed copies,
-    // without assuming its payload has only base64url characters.
-    else if (!secretKey.startsWith('sb_secret_') || secretKey.length < 26 || secretKey.length > 1024 || /[^\x21-\x7e]|["'`]/.test(secretKey)) add('SUPABASE_SECRET_KEY','KEY_FORMAT','Paste the complete sb_secret_ key with no embedded whitespace or surrounding quotation marks.');
+    const keyIssue = secretKeyIssue(secretKey);
+    if (keyIssue) issues.push(keyIssue);
     if (!/^[a-z0-9][a-z0-9_-]{0,99}$/.test(bucket)) add('SUPABASE_MEDIA_BUCKET','BUCKET_FORMAT','Enter the bucket ID only, such as khaga-product-media.');
   }
   const email = text(env,'ADMIN_EMAIL').toLowerCase();

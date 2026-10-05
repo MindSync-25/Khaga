@@ -1,6 +1,6 @@
 {
   "name": "khaga-storefront",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "description": "KHAGA Collection 001 \u2014 deployable, read-only commerce preview",
   "type": "module",
@@ -11,7 +11,7 @@
     "dev": "node scripts/build-client.mjs && node --watch server.mjs",
     "build": "node scripts/build-client.mjs && node scripts/build.mjs",
     "start": "node server.mjs",
-    "test": "node scripts/build-client.mjs && node --test test/*.test.mjs test/management/*.test.mjs",
+    "test": "node scripts/build-client.mjs && node --test test/*.test.mjs test/management/*.test.mjs test/checkout/*.test.mjs",
     "check": "npm test && npm run build",
     "prestart": "node scripts/build-client.mjs",
     "admin:password": "node scripts/admin-password.mjs",

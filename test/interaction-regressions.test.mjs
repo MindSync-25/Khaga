@@ -42,7 +42,7 @@ test('Search content is escaped in locally rendered pages too',()=>{
 test('Versioned bundle has JavaScript MIME, gzip and cache variation headers',async()=>{
  const r=await fetch(`${base}/site.js?v=${UI_BUILD}`,{headers:{'Accept-Encoding':'gzip'}});
  assert.equal(r.status,200);assert.equal(r.headers.get('content-type'),'text/javascript; charset=utf-8');
- assert.equal(r.headers.get('content-encoding'),'gzip');assert.equal(r.headers.get('vary'),'Accept-Encoding');assert.equal(r.headers.get('x-khaga-version'),UI_BUILD);
+ assert.equal(r.headers.get('content-encoding'),'gzip');assert.equal(r.headers.get('vary'),'Accept-Encoding');assert.equal(r.headers.get('x-khaga-version'),'0.5.0');
  assert.equal(await r.text(),bundle);
 });
 test('gzip;q=0 receives uncompressed content',async()=>{

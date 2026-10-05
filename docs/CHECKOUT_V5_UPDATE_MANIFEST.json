@@ -1,0 +1,126 @@
+{
+  "baseline_commit": "53bfa6e5810fe1121ea178a7a82e0fa25dd009f0",
+  "delivery": "changed-files-overlay-not-standalone",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 7128,
+      "sha256": "2129641935d60d096462a885d1c1213952f8da04b2da4dc59d4f4e34dce054db"
+    },
+    {
+      "path": "package.json",
+      "bytes": 798,
+      "sha256": "ea3b651a395083c038bac753f7deb7f06a7f8a1de87d33da84443af19f5ace25"
+    },
+    {
+      "path": "package-lock.json",
+      "bytes": 250,
+      "sha256": "8541edfcc529b1fdc9bca4c4c84716c08e4553c09eb2e3d12dad6987dabf2b89"
+    },
+    {
+      "path": "src/app.mjs",
+      "bytes": 9007,
+      "sha256": "2dffe5bebdc07e2e33bb3a0c3b3ada7988a8c484e24f3d640d047672c007ed14"
+    },
+    {
+      "path": "src/bootstrap.mjs",
+      "bytes": 5622,
+      "sha256": "17f2f68a95cd63799039d67befb3cfffbc3ed9755ea895d6ac37c14d72a1a1ec"
+    },
+    {
+      "path": "public/admin/index.html",
+      "bytes": 1780,
+      "sha256": "216458f2b3fdd29c5b0dd8ac9f37c26640e93a947bf3e5b8eacd165b104180b2"
+    },
+    {
+      "path": "public/checkout.js",
+      "bytes": 9634,
+      "sha256": "3f9c82deb452ce3808b5326544a38e617151d9269897d792275f119375bc57a0"
+    },
+    {
+      "path": "public/orders.js",
+      "bytes": 2072,
+      "sha256": "bba67b971fc69ceabc4e399685f2d94c0ff7d776009b95e1e897525c1c4d4c2f"
+    },
+    {
+      "path": "public/checkout.css",
+      "bytes": 3249,
+      "sha256": "85eb18ff81f3a585a0993c1ca3e13a5c800c0a86797ac460c47ba7028e36a92b"
+    },
+    {
+      "path": "public/checkout-launcher.js",
+      "bytes": 1165,
+      "sha256": "48facfddc3dba6a451104a65bca66fed4d919485a758e265604d7626c42e27a4"
+    },
+    {
+      "path": "migrations/002_test_checkout.sql",
+      "bytes": 6437,
+      "sha256": "ca9c1b08b6f407cd1061139eb5e439caae363e6c1a0c14ddf6206609b0537c01"
+    },
+    {
+      "path": "test/storefront.test.mjs",
+      "bytes": 7579,
+      "sha256": "87b0857c3fb9cb4f2c4d9bce655ed8c446515a683041749c1b19cfa3fb6d6671"
+    },
+    {
+      "path": "test/interaction-regressions.test.mjs",
+      "bytes": 5965,
+      "sha256": "c6977198ffaa0910dea76d7fa437954845c1ab76cee12d2a90cda6bab458b47a"
+    },
+    {
+      "path": "docs/CHECKOUT_V5.md",
+      "bytes": 10706,
+      "sha256": "0f269783f9e15bf99225affdc6bfb63266e3e531655b1fa336f6a22d4cf316a5"
+    },
+    {
+      "path": "src/checkout/core.mjs",
+      "bytes": 7163,
+      "sha256": "019cbac48a0fb59e2d745e7ace810f8bad1ebd5f604983d5790845d2ed00ad51"
+    },
+    {
+      "path": "src/checkout/http.mjs",
+      "bytes": 6851,
+      "sha256": "186fe6abf2066f332aad1d26090cce938ef0e184e27f69b1f59d4db6189fe8a1"
+    },
+    {
+      "path": "src/checkout/pages.mjs",
+      "bytes": 4560,
+      "sha256": "f61568ffade12d6163aba4aaeec806ad57ac32e7d53c65cf31f10ef6a1c98a4b"
+    },
+    {
+      "path": "src/checkout/provider.mjs",
+      "bytes": 1937,
+      "sha256": "5a8924c78bec998d7eabdf5764bb181b539e9247d647be1412d44f4824972bd2"
+    },
+    {
+      "path": "src/checkout/service.mjs",
+      "bytes": 5012,
+      "sha256": "ec65bb6cb7f121fa0c8ae7d23dac64f7a0468b124a6eaad8b5ad790bca14940b"
+    },
+    {
+      "path": "src/checkout/store.mjs",
+      "bytes": 4229,
+      "sha256": "44aac7628c482fd18e947afeb7a80f99339ef5571ed5f1731f022507ae1c14c3"
+    },
+    {
+      "path": "test/checkout/browser-fixture.mjs",
+      "bytes": 1974,
+      "sha256": "82e7888cf153c16bc2fcccffa862c59a9017856ac889347b194834784204a6de"
+    },
+    {
+      "path": "test/checkout/browser-qa.py",
+      "bytes": 7400,
+      "sha256": "f199318475a98aac649641bc13cb7fc6a81ae25896cb5144dfac580000a818ea"
+    },
+    {
+      "path": "test/checkout/checkout.test.mjs",
+      "bytes": 21309,
+      "sha256": "872804debcc9f95d51190653e378d1c46ffea96d1d4be7d2255debd8c4093704"
+    },
+    {
+      "path": "docs/CHECKOUT_V5_DELIVERY.md",
+      "bytes": 2875,
+      "sha256": "758525081ebdd6ba8425080ff5dfe5d1bb368705e8a06c677645593a60c3bbe4"
+    }
+  ]
+}

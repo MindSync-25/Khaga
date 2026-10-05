@@ -1,8 +1,8 @@
-# KHAGA 0.4.0 — catalogue management, sales still closed
+# KHAGA 0.5.0 — private checkout testing, customer sales still closed
 
 Storefront: `khaga.slavant.com`. Entry: `server.mjs`. Hostinger preset: **Other**, Node **22**, root `/`, build script `build`.
 
-This release implements **phase 1** of the operations roadmap. It does **not** implement live/test payment checkout, stored customer orders, emails, shipping, tax calculation or inventory reservations. `/api/checkout` remains hard-disabled with `403 PREVIEW_ONLY`. The existing Slavant site and DNS are not part of this change.
+This release adds an **owner-only Razorpay Test Checkout** with an address form, server-calculated totals, persisted test orders, verified payment confirmation and a private Orders page. See **[docs/CHECKOUT_V5.md](docs/CHECKOUT_V5.md)**. It is disabled by default; merely saving keys does not enable it. Live keys and live mode are rejected. Public customer checkout, real-money sales, email sending, tax calculation and inventory reservations are not enabled. The legacy `/api/checkout` endpoint remains blocked; private tests use `/api/checkout/*`. Slavant and DNS are unchanged.
 
 ## What is implemented
 
@@ -52,13 +52,15 @@ Basic steps:
 4. Deploy, open `/admin`, sign in and explicitly import the seven existing concepts.
 5. Validate a real save → publish → new storefront visit → restart/redeploy cycle and private image access before relying on the integration.
 
-An empty managed database gives an empty collection until import; it never silently falls back to stale seed data when a database is unavailable. Invalid management config fails startup rather than leaving an unprotected admin.
+An empty managed database gives an empty collection until import; it never silently falls back to stale seed data when a database is unavailable. Managed-storage failures produce controlled maintenance; invalid owner credentials keep admin closed. See docs/STARTUP_RECOVERY.md.
 
 ## Authentication / privacy notes
 
 Production uses `__Host-khaga_admin` with Secure, HttpOnly, SameSite=Strict, Path=/ and no Domain attribute. Session tokens are random; only their digest is stored. Owner password changes invalidate old sessions. Logout revokes the current session. The owner identity is deployment configuration, not supplied by a request.
 
-Optional sitewide preview authentication still uses BOTH `PREVIEW_USERNAME` and `PREVIEW_PASSWORD`. This is separate from admin authentication and also protects public media and health routes. No customer accounts or payment details are collected.
+Optional sitewide preview authentication still uses BOTH `PREVIEW_USERNAME` and `PREVIEW_PASSWORD`. This is separate from admin authentication and also protects public media and health routes. The public preview does not collect customer accounts or payment details. The
+optional owner-only test checkout stores submitted test contact/address data and
+payment references; use fictional details. KHAGA does not store card data.
 
 All real credentials must stay in Hostinger environment configuration. Never commit `.env`, password hashes, API keys, database files or real customer details. The repository's `.env.example` contains only placeholders; the server does not automatically load a `.env` file.
 

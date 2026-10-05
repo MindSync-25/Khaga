@@ -1,0 +1,21 @@
+// Local QA fixture only. No live service calls or production secrets.
+import {mkdtempSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {createApp} from '../../src/app.mjs';
+import {SQLiteRepository} from '../../src/management/repository.mjs';
+import {seedCatalogue} from '../../src/management/catalogue.mjs';
+import {hashPassword} from '../../src/management/security.mjs';
+import {managementService} from '../../src/management/http.mjs';
+import {checkoutHTTP} from '../../src/checkout/http.mjs';
+import {checkoutConfig} from '../../src/checkout/core.mjs';
+import {SQLiteOrderStore} from '../../src/checkout/store.mjs';
+const port=Number(process.env.KHAGA_QA_PORT||3145),dir=mkdtempSync(join(tmpdir(),'khaga-browser-'));
+const repo=await SQLiteRepository.open(dir);await seedCatalogue(repo);
+const management=managementService(repo,{driver:'sqlite',enabled:true,secure:false,email:'owner@example.test',passwordHash:await hashPassword('local-browser-qa-password-only'),origin:'http://127.0.0.1:'+port,sessionHours:8});
+const config=checkoutConfig({CHECKOUT_MODE:'test',RAZORPAY_KEY_ID:'rzp_test_fixture123',RAZORPAY_KEY_SECRET:'browser-fixture-key-secret'},management);
+const store=new SQLiteOrderStore(repo);
+let count=0;const orders=new Map();
+const provider={create:async o=>{const id='order_browser'+(++count);orders.set(id,o);return id;},payment:async id=>{const orderId='order_browser'+id.replace('pay_browser',''),o=orders.get(orderId);return {id,order_id:orderId,amount:o.body.quote.total,currency:'INR',status:'captured',captured:true,amount_refunded:0};},payments:async()=>[]};
+const app=createApp({username:'',password:'',management,commerce:checkoutHTTP({management,config,store,provider})});app.listen(port,'127.0.0.1',()=>console.log('QA ready'));
+for(const signal of ['SIGTERM','SIGINT'])process.on(signal,()=>app.close(async()=>{await repo.close();rmSync(dir,{recursive:true,force:true});process.exit(0);}));

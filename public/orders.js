@@ -1,0 +1,11 @@
+'use strict';
+(()=>{
+ const $=s=>document.querySelector(s),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ let offset=0,busy=false;const money=v=>new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR'}).format(v/100);
+ async function load(){if(busy)return;busy=true;$('#orders-prev').disabled=true;$('#orders-next').disabled=true;$('#orders-error').textContent='';try{
+  const r=await fetch('/api/admin/orders?offset='+offset,{credentials:'same-origin',cache:'no-store',signal:AbortSignal.timeout(15000)});const data=await r.json();if(!r.ok)throw Error(data.message||'Unable to load test orders.');
+  $('#orders-list').innerHTML=data.orders.length?data.orders.map(o=>`<details class="saved-order"><summary><strong>${esc(o.reference)}</strong><span>${esc(new Date(o.createdAt).toLocaleString())}</span><span class="status">${esc(o.status)}</span><strong>${money(o.quote.total)}</strong></summary><dl><dt>Reference</dt><dd>${esc(o.id)}</dd><dt>Payment ID</dt><dd>${esc(o.paymentId||'Not captured')}</dd><dt>Name / contact</dt><dd>${esc(o.customer.name)}<br>${esc(o.customer.email)}<br>${esc(o.customer.phone)}</dd><dt>Test address</dt><dd>${esc([o.customer.line1,o.customer.line2,o.customer.city,o.customer.state,o.customer.postalCode,o.customer.country].filter(Boolean).join(', '))}</dd></dl>${o.quote.items.map(i=>`<div class="order-line"><span>${esc(i.name)} · ${esc(i.colourName)} · ${esc(i.size)} × ${i.quantity}</span><span>${money(i.unitPrice*i.quantity)}</span></div>`).join('')}<p class="privacy-note">Test record only — do not dispatch goods or treat this as a real sale.</p></details>`).join(''):'<p>No test orders on this page.</p>';
+  $('#orders-prev').disabled=offset===0;$('#orders-next').disabled=data.orders.length<50;
+ }catch(e){$('#orders-error').textContent=e.message;}finally{busy=false;}}
+ $('#orders-prev').addEventListener('click',()=>{offset=Math.max(0,offset-50);void load();});$('#orders-next').addEventListener('click',()=>{offset+=50;void load();});void load();
+})();

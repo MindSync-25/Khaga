@@ -7,6 +7,7 @@ import {safeDiagnostic} from './management/diagnostics.mjs';
 import {equal} from './management/security.mjs';
 import {createApp} from './app.mjs';
 import {brandSvg} from './artwork.mjs';
+import {initializeCheckout} from './checkout/http.mjs';
 
 const maintenanceHTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>KHAGA — Temporarily unavailable</title></head><body style="margin:0;background:#f3efe7;color:#181816;font-family:system-ui,sans-serif"><main style="max-width:40rem;margin:12vh auto;padding:2rem"><img src="/brand/emblem.svg" width="96" height="80" alt="KHAGA"><h1>We’ll be back shortly.</h1><p>The collection is temporarily unavailable. Please try again later.</p><p>No orders or payments are being accepted.</p></main></body></html>`;
 const privateHeaders = {
@@ -28,7 +29,7 @@ function maintenanceResponse(req,res,env) {
   try{path=decodeURIComponent(new URL(req.url||'/','http://localhost').pathname);}catch{return send(400,'{"error":"INVALID_URL"}');}
   if(path==='/api/checkout')return send(403,'{"error":"PREVIEW_ONLY","message":"Orders and payments are not enabled."}');
   if(!['GET','HEAD'].includes(req.method))return send(503,'{"error":"SERVICE_NOT_READY"}',undefined,{'Retry-After':'30'});
-  if(path==='/health'||path==='/api/health')return send(503,'{"status":"degraded","app":"khaga-storefront","version":"0.4.0","mode":"maintenance"}',undefined,{'Retry-After':'30'});
+  if(path==='/health'||path==='/api/health')return send(503,'{"status":"degraded","app":"khaga-storefront","version":"0.5.0","mode":"maintenance"}',undefined,{'Retry-After':'30'});
   if(path==='/brand/emblem.svg')return send(200,brandSvg({emblem:true,wordmark:false}),'image/svg+xml');
   if(path==='/robots.txt')return send(200,'User-agent: *\nDisallow: /\n','text/plain');
   if(path==='/admin'||path==='/admin/'||path.startsWith('/api/'))return send(503,'{"error":"SERVICE_NOT_READY","message":"Setup has not completed. The owner can review the KHAGA runtime diagnostics."}',undefined,{'Retry-After':'30'});
@@ -58,7 +59,9 @@ export async function startApplication({env=process.env,port=Number(env.PORT||30
       if(storeConfig.driver!=='preview')repo=await open(storeConfig);
       if(closed){try{await repo?.close();}catch{}return {state:'closed'};}
       const management=repo?managementService(repo,config):null;
-      handler=createApp({username:env.PREVIEW_USERNAME||'',password:env.PREVIEW_PASSWORD||'',management});
+      const commerce=await initializeCheckout(management,env,log);
+      if(closed){try{await repo?.close();}catch{}return {state:'closed'};}
+      handler=createApp({username:env.PREVIEW_USERNAME||'',password:env.PREVIEW_PASSWORD||'',management,commerce});
       const result={state:'ready',catalogue:storeConfig.driver,admin:config.enabled?'enabled':'disabled'};
       emit(result.state,{catalogue:result.catalogue,admin:result.admin});
       return result;

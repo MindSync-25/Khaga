@@ -28,13 +28,15 @@ const security={
 const digest=value=>createHash('sha256').update(value).digest();
 const artworkCache=new Map();
 const seedSnapshot={version:'seed',managed:false,preview:true,products,colours,sizes};
-export function createApp({username=process.env.PREVIEW_USERNAME||'',password=process.env.PREVIEW_PASSWORD||'',management=null}={}){
+export function createApp({username=process.env.PREVIEW_USERNAME||'',password=process.env.PREVIEW_PASSWORD||'',management=null,commerce=null}={}){
  if(Boolean(username)!==Boolean(password))throw new Error('Set both PREVIEW_USERNAME and PREVIEW_PASSWORD, or neither.');
  return createServer(async(req,res)=>{
   const head=req.method==='HEAD';
+  let testCheckoutLink=false;
   const send=(status,body,type='text/html; charset=utf-8',extra={})=>{
+   if(testCheckoutLink && type.startsWith('text/html') && typeof body==='string')body=body.replace('</body>','<script defer src="/checkout-launcher.js?v=0.5.0"></script></body>');
    let bytes=Buffer.isBuffer(body)?body:Buffer.from(String(body));
-   const headers={...security,'Cache-Control':'no-store','Content-Type':type,'Vary':'Accept-Encoding','X-KHAGA-Version':'0.4.0',...extra,...(username?{'Cache-Control':'private, no-store'}:{})};
+   const headers={...security,'Cache-Control':'no-store','Content-Type':type,'Vary':'Accept-Encoding','X-KHAGA-Version':'0.5.0',...extra,...(username?{'Cache-Control':'private, no-store'}:{})};
    if(bytes.length>1024&&/^(text\/|application\/json|image\/svg\+xml)/.test(type)&&acceptsGzip(req.headers['accept-encoding'])){
     const key=createHash('sha256').update(bytes).digest('hex');
     if(!compressedResponses.has(key)){compressedResponses.set(key,gzipSync(bytes));if(compressedResponses.size>96)compressedResponses.delete(compressedResponses.keys().next().value);}
@@ -43,24 +45,28 @@ export function createApp({username=process.env.PREVIEW_USERNAME||'',password=pr
    headers['Content-Length']=bytes.length;res.writeHead(status,headers);res.end(head?'':bytes);
   };
   try{
+   // Only this signed server-to-server webhook bypasses optional site Basic Auth.
+   if(commerce && req.url==='/api/payments/razorpay/webhook' && await commerce.handle(req,res,'/api/payments/razorpay/webhook'))return;
    if(username&&password){const expected='Basic '+Buffer.from(username+':'+password).toString('base64');if(!timingSafeEqual(digest(req.headers.authorization||''),digest(expected))){send(401,'Preview access requires authentication.','text/plain; charset=utf-8',{'WWW-Authenticate':'Basic realm="KHAGA preview", charset="UTF-8"'});return;}}
    if((req.url||'').length>4096){send(414,'Request URI too long.','text/plain');return;}
    const url=new URL(req.url||'/','http://localhost');
    let path;try{path=decodeURIComponent(url.pathname);}catch{send(400,'Invalid URL encoding.','text/plain');return;}
    if(path.includes('\0')||path.includes('\\')){send(400,'Invalid path.','text/plain');return;}
+   if(commerce && await commerce.handle(req,res,path))return;
    if(management && await management.handle(req,res,path))return;
    if(path==='/admin'||path==='/admin/'||path.startsWith('/api/admin/')){
     send(503,JSON.stringify({error:'ADMIN_NOT_CONFIGURED',message:'Admin is disabled until the persistent store and owner credentials are configured.'}),'application/json',{'Cache-Control':'private, no-store'});return;
    }
-   // Checkout is closed on the server, regardless of browser state or env vars.
+   // Legacy/live checkout remains closed. Opted-in owner tests use the isolated /api/checkout/* routes above.
    if(path==='/api/checkout'){send(403,JSON.stringify({error:'PREVIEW_ONLY',message:'Orders and payments are not enabled.'}),'application/json');return;}
    if(!['GET','HEAD'].includes(req.method||'')){send(405,'Method not allowed.','text/plain',{'Allow':'GET, HEAD'});return;}
-   if(path==='/health'||path==='/api/health'){send(200,JSON.stringify({status:'ok',app:'khaga-storefront',version:'0.4.0',mode:'preview'}),'application/json');return;}
+   if(path==='/health'||path==='/api/health'){send(200,JSON.stringify({status:'ok',app:'khaga-storefront',version:'0.5.0',mode:'preview'}),'application/json');return;}
    if(path==='/robots.txt'){send(200,'User-agent: *\nDisallow: /\n','text/plain; charset=utf-8');return;}
    if(path==='/brand/wordmark.svg'||path==='/brand/emblem.svg'){send(200,brandSvg({wordmark:path.includes('wordmark'),emblem:path.includes('emblem')}),'image/svg+xml',{'Cache-Control':'public, max-age=3600'});return;}
    const asset=assets.get(path);
-   if(asset){if(req.headers['if-none-match']===asset.etag){res.writeHead(304,{...security,'Vary':'Accept-Encoding','X-KHAGA-Version':'0.4.0','ETag':asset.etag,'Cache-Control':username?'private, no-store':'public, max-age=3600'});res.end();return;}send(200,asset.data,asset.type,{'ETag':asset.etag,'Cache-Control':'public, max-age=3600'});return;}
+   if(asset){if(req.headers['if-none-match']===asset.etag){res.writeHead(304,{...security,'Vary':'Accept-Encoding','X-KHAGA-Version':'0.5.0','ETag':asset.etag,'Cache-Control':username?'private, no-store':'public, max-age=3600'});res.end();return;}send(200,asset.data,asset.type,{'ETag':asset.etag,'Cache-Control':'public, max-age=3600'});return;}
    const snapshot=management?await publishedSnapshot(management.repo):seedSnapshot;
+   if(commerce && await commerce.allowed(req)){snapshot.checkout={mode:'test'};testCheckoutLink=true;}
    const context=createCatalog(snapshot),pages=createViews(context);
    if(path==='/api/catalog'){send(200,JSON.stringify(snapshot),'application/json; charset=utf-8',{'Cache-Control':'no-store'});return;}
    const art=path.match(/^\/media\/([a-z0-9-]+)\/([a-z0-9-]+)\/(front|back|detail|model)\.svg$/);

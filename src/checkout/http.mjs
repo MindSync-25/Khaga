@@ -12,8 +12,8 @@ export const checkoutHeaders = {
  'Content-Security-Policy':"default-src 'self'; script-src 'self' https://checkout.razorpay.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://checkout.razorpay.com https://cdn.razorpay.com; frame-src https://api.razorpay.com https://checkout.razorpay.com; connect-src 'self' https://api.razorpay.com https://checkout.razorpay.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
  'Permissions-Policy':'camera=(), microphone=(), geolocation=()',
 };
-export function checkoutHTTP({management,config,store,provider}) {
- const service=checkoutService({repo:management.repo,config,store,provider});
+export function checkoutHTTP({management,config,store,provider,log=()=>{}}) {
+ const service=checkoutService({repo:management.repo,config,store,provider,log});
  const cookieName=config.secure?'__Host-khaga_checkout':'khaga_checkout_local';
  const allowed=async req=>Boolean(await management.session(req));
  function guest(req){const value=cookies(req)[cookieName];return /^[a-f0-9]{64}$/.test(value||'')?value:null;}
@@ -72,7 +72,7 @@ export async function initializeCheckout(management,env,log=()=>{}){
  let config;try {
   config=checkoutConfig(env,management);if(!config)return null;
   const store=orderStore(management.repo);await store.ready();
-  return checkoutHTTP({management,config,store,provider:new RazorpayProvider(config)});
+  return checkoutHTTP({management,config,store,provider:new RazorpayProvider(config),log});
  }catch{
   // Never log provider payloads/config values or take down a working storefront.
   try{log(JSON.stringify({event:'KHAGA_CHECKOUT_SETUP',state:'disabled',message:'Test checkout setup did not pass. Review CHECKOUT_MODE, test keys, owner setup and migration 002. No live payments are enabled.'}));}catch{}return null;

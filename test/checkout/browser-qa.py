@@ -26,9 +26,14 @@ const id='12345678-1234-1234-1234-123456789abc';let record=null;
 window.fetch=async(path,options={})=>{__calls.push(String(path));const input=options.body?JSON.parse(options.body):null;
  if(path==='/api/checkout/session')return Response.json({mode:'test',csrf:'fixturecsrf',recent:[]});
  if(path==='/api/checkout/quote')return Response.json(quote);
- if(path==='/api/checkout/orders'){__creates++;record={order:{id,reference:'KHAGA-T-12345678',status:'payment_pending',mode:'test',quote,customer:input.customer,createdAt:'2026-10-05T10:00:00Z'},payment:{keyId:'rzp_test_fixture123',orderId:'order_fixture',currency:'INR',amount:299000}};return Response.json(record);}
+ if(path==='/api/checkout/orders'){__creates++;record={order:{id,reference:'KHAGA-T-12345678',status:'payment_pending',mode:'test',quote,customer:input.customer,createdAt:'2026-10-05T10:00:00Z'},payment:{keyId:'rzp_test_fixture123',orderId:'order_fixture',currency:'INR',amount:299000}};if(__paymentAction==='unknown'){record.order.status='creation_unknown';record.payment=null;record.issue={code:'PAYMENT_RESPONSE_INVALID',message:'The Razorpay response could not be verified.'};}return Response.json(record);}
  if(String(path).endsWith('/verify')){if(__paymentAction!=='pending'){record.order.status='paid';record.payment=null;}return Response.json(record);}
- if(String(path).endsWith('/reconcile')){record.order.status='paid';record.payment=null;return Response.json(record);}
+ if(String(path).endsWith('/reconcile')){
+  if(__paymentAction==='auth-failure')return Response.json({error:'PAYMENT_AUTH_FAILED',message:'Razorpay rejected the server credentials. Verify the matching Test pair.'},{status:503});
+  if(__paymentAction==='no-match')return Response.json({error:'PAYMENT_ORDER_NOT_FOUND',message:'No matching Razorpay order was found. No new order was created.'},{status:503});
+  if(__paymentAction==='recover'){record.order.status='payment_pending';record.payment={keyId:'rzp_test_fixture123',orderId:'order_fixture',currency:'INR',amount:299000};delete record.issue;return Response.json(record);}
+  if(__paymentAction!=='cancel'){record.order.status='paid';record.payment=null;}return Response.json(record);
+ }
  if(String(path).includes('/api/checkout/orders/'))return Response.json(record);
  throw Error('Unexpected offline request '+path);
 };
@@ -61,6 +66,13 @@ with sync_playwright() as p:
  page.locator('[data-resume-payment]').click();assert page.evaluate('__creates')==1;passed('Resume reuses saved gateway order')
  reset('pending');review();page.locator('#pay-button').click();page.wait_for_selector('[data-check-status]');assert 'not confirmed' in page.locator('#order-result').inner_text();assert page.evaluate("JSON.parse(localStorage.getItem('khaga.preview.bag.v1')).items.length")==1;passed('Pending payment is not shown as paid')
  page.locator('[data-check-status]').click();page.wait_for_function("document.querySelector('#order-result').textContent.includes('Your test is complete')");passed('Explicit reconciliation updates confirmation')
+ reset('unknown');review();page.locator('#pay-button').click();page.wait_for_selector('[data-check-status]');assert 'Order creation needs review' in page.locator('#order-result').inner_text();assert 'response could not be verified' in page.locator('#order-result').inner_text();assert page.locator('[data-resume-payment]').count()==0;passed('Uncertain create shows truthful state and cause without resume')
+ assert page.evaluate("JSON.parse(localStorage.getItem('khaga.preview.bag.v1')).items.length")==1;passed('Uncertain create preserves bag')
+ page.evaluate("__paymentAction='auth-failure'");page.locator('[data-check-status]').click();page.wait_for_function("document.querySelector('#checkout-error').textContent.includes('matching Test pair')");assert page.evaluate('__creates')==1;passed('Existing saved order reports authentication failure without another create')
+ page.evaluate("__paymentAction='no-match'");page.locator('[data-check-status]').click();page.wait_for_function("document.querySelector('#checkout-error').textContent.includes('No matching')");assert page.locator('[data-resume-payment]').count()==0;assert page.evaluate('__creates')==1;passed('Unmatched order stays blocked with actionable result')
+ page.evaluate("__paymentAction='recover'");page.locator('[data-check-status]').click();page.wait_for_selector('[data-resume-payment]');assert page.evaluate('__creates')==1;passed('Recovery resumes the original saved order without another create')
+ page.screenshot(path=str(OUT/'checkout-recovered.png'),full_page=True)
+ page.locator('[data-resume-payment]').click();page.wait_for_function("document.querySelector('#order-result').textContent.includes('Your test is complete')");assert page.evaluate('__creates')==1;passed('Recovered order completes using the same gateway order')
  assert not errors,errors;passed('No unhandled browser script exceptions')
  browser.close()
 (OUT/'report.json').write_text(json.dumps({'checks':checks,'count':len(checks),'errors':errors,'limitations':'Offline UI harness. API, storage and Razorpay are simulated; native network navigation is blocked.'},indent=2))

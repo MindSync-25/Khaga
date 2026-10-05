@@ -1,5 +1,6 @@
 import {createHash, createHmac, timingSafeEqual} from 'node:crypto';
 import {HttpError, requireThat as need} from '../management/errors.mjs';
+import {safeGatewayError} from './gateway-errors.mjs';
 export const sha = value => createHash('sha256').update(value).digest('hex');
 export const uuidPattern = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 export function checkoutConfig(env, management) {
@@ -72,6 +73,7 @@ export function paymentUpdate(order, payment) {
   return null;
 }
 export function safeCheckoutError(error) {
+  const gateway=safeGatewayError(error);if(gateway)return gateway;
   const allowed = new Set(['INVALID_ADDRESS','INVALID_BAG','VARIANT_UNAVAILABLE','CATALOGUE_NOT_READY','TOTAL_LIMIT','QUOTE_CHANGED','INVALID_CATALOGUE_PRICE','INVALID_REQUEST','ORDER_NOT_FOUND','IDEMPOTENCY_CONFLICT','ORDER_PENDING','ORDER_CREATION_UNCERTAIN','ORDER_EXPIRED','PAYMENT_MISMATCH','INVALID_SIGNATURE','PAYMENT_UNAVAILABLE','CSRF_DENIED','ORIGIN_DENIED','CROSS_SITE_DENIED','RATE_LIMITED','COOKIE_REQUIRED','ADMIN_LOGIN_REQUIRED','METHOD_NOT_ALLOWED','JSON_REQUIRED','INVALID_JSON','BODY_TOO_LARGE','ENCODING_NOT_ALLOWED','WEBHOOK_DISABLED']);
   return error instanceof HttpError && allowed.has(error.code) ? {status:error.status,error:error.code,message:error.message} : {status:503,error:'CHECKOUT_UNAVAILABLE',message:'Checkout is temporarily unavailable. Your bag is unchanged. Do not pay again if a payment is pending.'};
 }

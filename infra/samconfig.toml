@@ -3,7 +3,12 @@ version = 0.1
 template_file = "template.yaml"
 [test.deploy.parameters]
 stack_name = "khaga-commerce-test"
-resolve_s3 = true
+resolve_s3 = false
+s3_bucket = "khaga-test-artifacts-521199095818-ap-south-1"
+s3_prefix = "khaga-commerce-test"
+role_arn = "arn:aws:iam::521199095818:role/khaga-test-cloudformation"
+region = "ap-south-1"
+profile = "sairn-deployer"
 capabilities = "CAPABILITY_IAM"
 confirm_changeset = true
 fail_on_empty_changeset = false

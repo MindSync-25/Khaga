@@ -52,6 +52,7 @@ Resources:
   CommerceApi:
     Type: AWS::Serverless::HttpApi
     Properties:
+      Name: !Sub khaga-commerce-${Environment}
       StageName: '$default'
       CorsConfiguration:
         AllowOrigins: !Ref FrontendOrigins
@@ -66,6 +67,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub khaga-purchase-${Environment}
+      PermissionsBoundary: !If [IsLive, !Ref 'AWS::NoValue', 'arn:aws:iam::521199095818:policy/khaga-test-runtime-boundary']
       Handler: src/commerce/purchase.handler
       Policies:
         - Statement:
@@ -86,6 +88,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub khaga-confirm-purchase-${Environment}
+      PermissionsBoundary: !If [IsLive, !Ref 'AWS::NoValue', 'arn:aws:iam::521199095818:policy/khaga-test-runtime-boundary']
       Handler: src/commerce/confirm-purchase.handler
       Policies:
         - Statement:

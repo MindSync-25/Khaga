@@ -87,3 +87,13 @@ test('actual API Gateway v2 tag denial and default stage are covered only for th
  assert.equal(allows('apigateway:POST',actual+'%2Fstages%2Fother'),false);
  assert.equal(allows('apigateway:POST',actual.replace('ap-south-1','us-east-1')),false);
 });
+test('tag-on-create grant is restricted to the existing API stage collection',()=>{
+ const grants=execution.Statement.filter(s=>arr(s.Action).includes('apigateway:TagResource'));
+ assert.deepEqual(grants,[{Sid:'TagOnlyProdStageOnCreate',Effect:'Allow',Action:['apigateway:TagResource'],Resource:'arn:aws:apigateway:ap-south-1::/apis/REPLACE_WITH_PROD_API_ID/stages'}]);
+ const rendered=JSON.parse(JSON.stringify(grants).replaceAll('REPLACE_WITH_PROD_API_ID','1ssp74gnt2'));
+ const allows=(action,resource)=>rendered.some(s=>s.Action.includes(action)&&s.Resource===resource);
+ assert.equal(allows('apigateway:TagResource','arn:aws:apigateway:ap-south-1::/apis/1ssp74gnt2/stages'),true);
+ assert.equal(allows('apigateway:TagResource','arn:aws:apigateway:ap-south-1::/apis/9otherapi0/stages'),false);
+ assert.equal(allows('apigateway:TagResource','arn:aws:apigateway:ap-south-1::/apis/1ssp74gnt2'),false);
+ assert.equal(allows('apigateway:UntagResource','arn:aws:apigateway:ap-south-1::/apis/1ssp74gnt2/stages'),false);
+});

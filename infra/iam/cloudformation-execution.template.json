@@ -191,6 +191,14 @@
         "cloudformation:CreateChangeSet"
       ],
       "Resource": "arn:aws:cloudformation:ap-south-1:aws:transform/Serverless-2016-10-31"
+    },
+    {
+      "Sid": "TagOnlyProdStageOnCreate",
+      "Effect": "Allow",
+      "Action": [
+        "apigateway:TagResource"
+      ],
+      "Resource": "arn:aws:apigateway:ap-south-1::/apis/REPLACE_WITH_PROD_API_ID/stages"
     }
   ]
 }

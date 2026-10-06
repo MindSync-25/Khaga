@@ -179,6 +179,14 @@
         "arn:aws:apigateway:ap-south-1::/tags/arn:aws:apigateway:ap-south-1::/apis/REPLACE_WITH_PROD_API_ID/stages/$default",
         "arn:aws:apigateway:ap-south-1::/tags/arn%3Aaws%3Aapigateway%3Aap-south-1%3A%3A%2Fapis%2FREPLACE_WITH_PROD_API_ID%2Fstages%2F%24default"
       ]
+    },
+    {
+      "Sid": "UseSamTransform",
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:CreateChangeSet"
+      ],
+      "Resource": "arn:aws:cloudformation:ap-south-1:aws:transform/Serverless-2016-10-31"
     }
   ]
 }

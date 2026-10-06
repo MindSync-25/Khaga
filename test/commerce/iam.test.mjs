@@ -60,3 +60,10 @@ test('production resource bundle contains no alternative environment dependency'
  assert.match(template,/LiveApiApproved:[\s\S]*?Default: 'false'/);assert.match(template,/PurchasesEnabled:[\s\S]*?Default: 'false'/);
  assert.match(samconfig,/\[prod.deploy.parameters\]/);assert.doesNotMatch(samconfig,/\[(?:test|live|staging|acceptance)\./);
 });
+test('execution role can process only the regional SAM transform, not arbitrary stacks or transforms',()=>{
+ const statements=execution.Statement.filter(s=>arr(s.Action).some(a=>a.startsWith('cloudformation:')));
+ assert.deepEqual(statements,[{Sid:'UseSamTransform',Effect:'Allow',Action:['cloudformation:CreateChangeSet'],Resource:'arn:aws:cloudformation:ap-south-1:aws:transform/Serverless-2016-10-31'}]);
+ const summary=deployer.Statement.find(s=>s.Sid==='ReviewAndExecuteProdChangeSet');
+ assert.ok(summary.Action.includes('cloudformation:GetTemplateSummary'));
+ assert.equal(summary.Resource,'arn:aws:cloudformation:ap-south-1:521199095818:stack/khaga-commerce-prod/*');
+});

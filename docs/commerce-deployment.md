@@ -38,7 +38,7 @@ Real browser reproduction: install Playwright with Chromium, generate one-day lo
 ## Secrets and database setup
 
 1. Review `migrations/003_commerce.sql`, then apply it through the existing Supabase SQL editor as database owner after migrations 001/002. It is additive and re-runnable. Preserve `test_orders`, `test_payment_events`, catalogue/admin data and ambiguous legacy records. No data is migrated or deleted. Private tables have RLS and public execution is revoked; only `service_role` can invoke the commerce RPC.
-2. In AWS Secrets Manager, create separate encrypted JSON secrets for Test and Live. Use the AWS console/SSO or an approved secure input channel, never raw secrets in chat, shell arguments, repository files, CI output or browser bundles. The schema is: `mode`, `keyId`, `keySecret`, `webhookSecret`, `sessionSecret`, `supabaseURL`, `secretKey`. Use separate random webhook and session secrets (at least 24 and 32 characters respectively); they must differ from each other and the Razorpay secret. Use the existing Supabase server credential. Only each environment's selected secret ARN is granted to its Lambda execution roles. The default Secrets Manager encryption key works without additional KMS grants; a customer-managed key needs a separately reviewed, scoped decrypt grant.
+2. For the approved Test deployment, create only the encrypted Test JSON secret in AWS Secrets Manager. A separate Live secret is required only after future Live approval. Use the AWS console/SSO or an approved secure input channel, never raw secrets in chat, shell arguments, repository files, CI output or browser bundles. The schema is: `mode`, `keyId`, `keySecret`, `webhookSecret`, `sessionSecret`, `supabaseURL`, `secretKey`. Use separate random webhook and session secrets (at least 24 and 32 characters respectively); they must differ from each other and the Razorpay secret. Use the existing Supabase server credential. Only each environment's selected secret ARN is granted to its Lambda execution roles. The default Secrets Manager encryption key works without additional KMS grants; a customer-managed key needs a separately reviewed, scoped decrypt grant.
 3. Insert a reviewed policy row into `khaga_private.commerce_policy`. No policy is seeded by the production migration. `settings` fields are `mode` (`test`/`live`), `enabled` (boolean), `version` (increment on edits), `shippingPaise` (integer), `freeShippingAt` (integer or null), `taxBps` (0–10000), `taxTreatment` (`inclusive`/`exclusive`), `taxShipping` (boolean), `taxNote` (approved text). Missing settings fail closed. Tax rounds once at order level; ensure that is the approved business rule.
 4. Review published products in existing admin: prices in paise, `sampleApproved=true`, sellable `stock`/`preorder` variants, quantity/capacity and preorder dispatch range. Unavailable/unapproved variants cannot be purchased.
 
@@ -51,7 +51,7 @@ sam deploy --template-file .aws-sam/build/template.yaml \
   --config-file infra/samconfig.toml --config-env test \
   --profile YOUR_PROFILE --region YOUR_REGION \
   --parameter-overrides Environment=test LiveApproved=false \
-    TestSecretArn=YOUR_TEST_SECRET_ARN FrontendOrigins=https://slavant.com
+    TestSecretArn=YOUR_TEST_SECRET_ARN FrontendOrigins=https://khaga.slavant.com
 ```
 
 Review the change set before execution. Live does not need to be provisioned to deploy Test. Outputs are `ApiUrl`, `WebhookUrl`, `PurchaseFunction` and `ConfirmFunction`. HTTP routes:
@@ -63,7 +63,7 @@ Review the change set before execution. Live does not need to be provisioned to 
 
 ### Resolve the known 200-local / 401-Hostinger issue early
 
-After the Test stack and securely stored Test secret exist, invoke the deployed purchase function directly with IAM authorization (not an HTTP route). This performs only `GET /v1/orders?count=1` and returns safe success/error/status codes and the AWS request ID:
+The FIRST payment check after provisioning must be this IAM-only check from the deployed Purchase Lambda. Reuse the matching Test-key pair that already passed on the owner’s Mac; do not regenerate it. After the Test stack and securely stored Test secret exist, invoke the deployed purchase function directly with IAM authorization (not an HTTP route). This performs only `GET /v1/orders?count=1` and returns safe success/error/status codes and the AWS request ID:
 
 ```sh
 aws lambda invoke --profile YOUR_PROFILE --region YOUR_REGION \
@@ -81,8 +81,8 @@ After DNS/cost approval:
 
 1. Request an ACM public certificate in the same region as the HTTP API, for the exact selected API subdomain. Add its DNS validation CNAME in the existing DNS provider only after approval.
 2. Create a Regional API Gateway custom domain with that ACM ARN and TLS 1.2; map its empty API path to this HTTP API's `$default` stage. No additional Lambda is required.
-3. Add the API Gateway target CNAME/alias for that subdomain in the existing DNS provider only after approval. Do not change Hostinger's storefront DNS.
-4. Set exact `FrontendOrigins`, including `https://www.slavant.com` only if actually served. Wildcards are forbidden. Browser requests use `credentials: include`; the API independently requires the signed guest cookie, exact Origin and CSRF for mutations. Admin cookies are not used by Lambda.
+3. Add the API Gateway target CNAME/alias for that subdomain in the existing DNS provider only after approval. Do not change the existing `khaga.slavant.com` storefront record or the main Slavant website.
+4. Set `FrontendOrigins=https://khaga.slavant.com` exactly. This is the existing KHAGA storefront; do not add the main Slavant site or a www origin. Wildcards are forbidden. Browser requests use `credentials: include`; the API independently requires the signed guest cookie, exact Origin and CSRF for mutations. Admin cookies are not used by Lambda.
 5. Set **one** Hostinger setting, `COMMERCE_API_BASE_URL=https://commerce-test.slavant.com`, only after API verification. This exposes guest checkout and injects that exact origin into checkout CSP `connect-src`; Razorpay scripts/frames retain their narrowly scoped hosts. Until this setting is supplied the current site and legacy owner Test checkout remain available.
 
 ## Webhook and hosted Test acceptance checklist
@@ -110,3 +110,30 @@ Rollback: unset `COMMERCE_API_BASE_URL` to stop new guest entry, disable the aff
 Local Node regression/unit tests, local real PostgreSQL transactions and Chromium HTTPS behavior are evidence for the code only. Actual AWS deployment, Supabase migration, deployed-Lambda auth check and a hosted Razorpay Test transaction require the owner's account/configuration and approval and must be reported separately.
 
 Provider contracts: [Razorpay server integration](https://razorpay.com/docs/payments/server-integration/nodejs/integration-steps/), [webhook validation](https://razorpay.com/docs/webhooks/validate-test/), [documented order receipt filter](https://github.com/razorpay/razorpay-php/blob/master/documents/order.md), [AWS HTTP API v2 payload/cookies](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-develop-integrations-lambda.html).
+
+
+## Hosted Test approval scope (prepared 2026-10-06; not deployed)
+
+The storefront origin is exactly `https://khaga.slavant.com`. The main Slavant website is outside this deployment. PR #5 remains a draft.
+
+Access inventory: AWS CLI 2.36.44 is installed; SAM CLI 1.166.2 is available in the existing uv environment, not directly on PATH. Use `SAM_CLI_TELEMETRY=0 uv run --offline --no-project --with playwright --with aws-sam-cli sam ...` for the installed SAM environment. The only configured profile is `sairn-deployer` with configured region `us-east-1`. The owner selected `sairn-deployer` for KHAGA. STS verified account `521199095818` and IAM user `arn:aws:iam::521199095818:user/sairn-deployer` (not an assumed role). Authentication is valid; no login is needed. This establishes identity, not deployment permissions. No credentials or credential files were printed. Proposed KHAGA region: `ap-south-1` (Mumbai), subject to owner selection and the existing Supabase region. No profile defaults are changed.
+
+The read-only identity check completed successfully using `sairn-deployer` and `us-east-1`. Before future deployment sessions, recheck the selected identity:
+
+```sh
+aws sts get-caller-identity --profile SELECTED_PROFILE --region SELECTED_REGION --no-cli-pager
+```
+
+If that reports missing/expired authentication, provide the specific login step for the selected profile's authentication method. Do not request access keys or session tokens in chat or assume an SSO login command applies to an unknown profile type.
+
+Approval covers a dedicated `khaga-commerce-test` SAM stack: two 256 MB ARM64 Node.js 22 functions (`khaga-purchase-test`, `khaga-confirm-purchase-test`), their execution roles and scoped policies, HTTP API/default stage and seven route integrations with Lambda invocation permissions, and two CloudWatch log groups with 14-day retention. Supporting setup includes one Test Secrets Manager secret, a SAM-managed S3 artifact bucket/bootstrap stack if absent, a Regional API Gateway custom domain/API mapping and one non-exportable public ACM certificate. No Live stack, VPC, NAT, EC2, database replacement, new hosted zone or provisioned concurrency is proposed.
+
+Low-volume planning allowance: **US$1–3/month**, before tax and without relying on free-tier credits, for 10,000 API/Lambda requests per month, average 2 seconds at 256 MB, one secret, at most 0.5 GB log ingestion and 0.1 GB deployment artifacts. This is an estimate, not a spending cap; regional rates, retries, traffic and logs affect the bill. Existing Supabase/Hostinger charges are excluded. Secrets Manager lists $0.40/secret/month plus request charges; public non-exportable ACM certificates integrated with API Gateway have no certificate charge. No DNS hosting charge is assumed because records will be added at the existing DNS provider. Sources checked: [API Gateway](https://aws.amazon.com/api-gateway/pricing/), [Lambda](https://aws.amazon.com/lambda/pricing/), [Secrets Manager](https://aws.amazon.com/secrets-manager/pricing/), [CloudWatch](https://aws.amazon.com/cloudwatch/pricing/), [S3](https://aws.amazon.com/s3/pricing/), [ACM](https://aws.amazon.com/certificate-manager/pricing/).
+
+Proposed secret name: `khaga/test/commerce`, encrypted with the AWS-managed Secrets Manager key. After approval, use the authenticated AWS console to enter `mode=test`, the existing matching Razorpay Test key pair that passed on the Mac, existing Supabase URL/server key, and newly generated independent webhook/session secrets. Do not rotate the existing Razorpay or Supabase credentials. Keep all values out of chat, CLI arguments, logs and Git; share only the resulting secret ARN. The Lambda roles receive access only to that ARN. The console is the proposed provisioning method unless an already-approved secure transfer method is selected.
+
+Proposed API hostname remains `commerce-test.slavant.com`. Add only ACM's generated validation CNAME and the API hostname CNAME/alias targeting the Regional API Gateway domain, plus its empty-path mapping to this Test API. Exact generated record names/targets will be reviewed after certificate/domain creation. Preserve both the `khaga.slavant.com` storefront record and all main Slavant records. The certificate must be in the approved API region.
+
+Collect remaining Test choices together: approval of account `521199095818` / selected profile `sairn-deployer` and proposed region `ap-south-1`; API hostname/DNS access; secure secret provisioning method and location of the already-validated Test pair (reference only); existing Supabase project and approval for migration 003; a published test product/variant, price and finite stock/preorder capacity; explicit Test shipping amount/threshold, tax rate and inclusive/exclusive/shipping-tax treatment and wording; a hosted checkout test window and permission for the KHAGA-only Hostinger deployment/commerce setting. Test records must remain clearly labelled and must not trigger fulfilment.
+
+Execution order after scope approval: provision Test infrastructure and securely provision its Test secret; **FIRST payment check: invoke `operatorAction=razorpay-auth-check` through IAM on deployed Purchase**; investigate any failure in that deployed configuration without regenerating the known matching keys; then apply the approved additive Supabase migration/policy, configure the approved certificate/DNS/webhook, and deploy the branch's KHAGA frontend with the exact API base. Run the guest product → bag → quote → hosted Test payment → verified saved order → protected admin flow, the missed-callback/webhook flow, then redeploy and recheck persistence. Report deployed AWS/Supabase/Razorpay evidence separately from the existing local/mocked results. Live activation needs separate approval after hosted acceptance passes.

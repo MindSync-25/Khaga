@@ -1,31 +1,61 @@
-> Current Test handoff: [administrator IAM bundle, private secret provisioning, DNS steps and purchase-only choices](../infra/iam/README.md). Account `521199095818`, profile `sairn-deployer`, region `ap-south-1` are confirmed. Administrator permissions and the exact Test secret ARN remain outstanding. Infrastructure/authentication precede any database or business-policy changes.
+# Single production commerce deployment
 
-# Guest commerce deployment and acceptance
+**Current scope supersedes all earlier Test-stack deployment instructions. Do not apply the old Test administrator bundle.** Continue draft PR #5 and the implemented guest checkout. Deploy one stack only; local tests retain Test/Live fixtures but do not require any additional AWS environment.
 
-This change adds guest checkout using exactly two native Lambda handlers per environment. Hostinger continues serving catalogue, artwork, checkout HTML and protected management. Only customer commerce API calls move to AWS. Nothing deploys from a merge automatically.
+| Setting | Production target |
+| --- | --- |
+| AWS account / region / profile | `521199095818` / `ap-south-1` / existing `sairn-deployer` |
+| Stack | `khaga-commerce-prod` |
+| Functions | `khaga-purchase-prod`, `khaga-confirm-purchase-prod` |
+| Frontend origin | Exactly `https://khaga.slavant.com` |
+| API domain | `commerce.slavant.com` |
+| Secret | `khaga/prod/commerce` |
+| Supabase | Existing KHAGA project; preserve data |
+| Artifact bucket / prefix | `khaga-prod-artifacts-521199095818-ap-south-1` / `khaga-commerce-prod/` |
+| CloudFormation role / runtime boundary | `khaga-prod-cloudformation` / `khaga-prod-runtime-boundary` |
 
-## Required owner settings (collect together)
+The two existing native handlers, guest sessions, verified payments, raw-byte signed webhooks, idempotency, immutable order snapshots, recovery and protected admin remain. Hostinger serves the existing frontend/admin. The main Slavant website is unchanged. Merge does not deploy or open checkout.
 
-- AWS account ID, region and SSO/profile; preferred secure Secrets Manager provisioning method; approval for the Test stack's paid resources.
-- Reviewed retail prices and published variant quantities/capacities, sample approval, and the intended meaning of those capacities. New reservations count against cumulative capacity; do not subtract sold units again in admin. Test reservations are separate from Live.
-- Shipping charge in paise and optional free-shipping threshold; tax rate in basis points, inclusive/exclusive treatment, whether shipping is taxable, and approved customer-facing tax wording. These settings currently apply to India only. Approve Test fixture settings separately; no simulated policy is promoted to Live.
-- Exact storefront origin(s), API subdomain, and approved delivery/returns/privacy/terms/support wording before opening customer sales. Existing preview help pages are not approved customer policy.
+## Administrator handoff
 
-No customer account or owner login is required. All-order lists still require the existing Hostinger admin session. The API uses its own seven-day signed HttpOnly guest cookie. Losing/clearing that cookie requires support; an order UUID grants no access.
+Apply only the [production IAM bundle and console steps](../infra/iam/README.md). The administrator creates the empty API **inside khaga-commerce-prod itself**, the private artifact bucket, production secret, runtime boundary, CloudFormation role and additive deployment policy. Its generated API ID and exact secret ARN are rendered into the policies using `scripts/render-prod-iam.py`. No separate bootstrap stack or SAM-managed bucket stack is needed. IAM PassRole is limited to required roles/services; only runtime roles read the exact production secret. No AdministratorAccess, Sairn permission changes, self-grants or Route 53 permissions.
 
-## Build and review locally
+Certificate/domain creation is administrator-owned. DNS stays at the existing provider: ACM validation CNAME plus `commerce.slavant.com` CNAME to the Regional API Gateway domain, with an empty API mapping to the production `$default` stage. Do not modify unrelated DNS/Hostinger sites.
+
+Billable resources: two ARM64 256 MB Node.js 22 Lambda functions, HTTP API/default stage, two 14-day log groups, one Secrets Manager secret, private artifact storage and Regional API custom domain with non-exportable public ACM certificate. No VPC/NAT, EC2, extra database, provisioned concurrency or additional AWS test environment.
+
+## Separate infrastructure, API access and purchases
+
+| Control | Setup value | Meaning |
+| --- | --- | --- |
+| `Environment` / `COMMERCE_ENVIRONMENT` | `prod` | Resource naming only; the template allows only this environment |
+| `PaymentMode` / `COMMERCE_MODE` | `live` | Payment/order namespace; the production template allows only Live |
+| `CommerceSecretArn` | Exact production ARN | The only secret reference; no TestSecretArn or Test stack dependency |
+| `LiveApiApproved` / `LIVE_API_APPROVED` | `false` | Requires explicit owner approval before any Razorpay Live API use |
+| `PurchasesEnabled` / `PURCHASES_ENABLED` | `false` | New quote/order creation disabled; no new payment window offered by recovery |
+| Database Live policy | Disabled until approved | Independently reviewed real shipping/tax/capacity policy |
+| Hostinger `COMMERCE_API_BASE_URL` | Unset during setup | Existing guest checkout entry stays off until public activation is approved |
+
+The runtime rejects mismatched secret mode/key prefix, incomplete credentials, production/Test mismatch, and unauthorised Live API use. Merely supplying Live keys or deploying `prod` is not API approval. After API approval, authentication, confirmation, signed webhooks and existing-order status/reconciliation remain available with purchases disabled. Disabling purchases does not discard in-flight orders or stop payment confirmation. Missing/false purchase flags fail closed before product reads, reservations or provider order creation. Enabling purchases also requires API approval in the CloudFormation rule.
+
+The IAM deployment grant permits changing this stack's parameters; owner approvals are an operational requirement, not something IAM infers from a boolean. Do not set either approval gate automatically.
+
+## Local validation and build
+
+From the repository root:
 
 ```sh
 npm test
 npm run build
 node scripts/build-commerce.mjs
-sam validate --lint --template-file infra/template.yaml --region YOUR_REGION
+sam validate --lint --template-file infra/template.yaml --region ap-south-1
+sam validate --lint --template-file infra/iam/bootstrap-api.yaml --region ap-south-1
 sam build --template-file infra/template.yaml --build-dir .aws-sam/build
 ```
 
-The artifact allowlist contains only `src/` and a generated package manifest; no `.env`, Git metadata, browser fixtures or credentials. AWS SDK v3 is supplied by the Node.js 22 Lambda runtime. `infra/template.yaml` defines only `Purchase` and `ConfirmPurchase` Lambda resources. Function names are `khaga-purchase-test`/`khaga-confirm-purchase-test`, with separate `-live` names for the Live environment. No VPC or NAT is created.
+On this Mac SAM is available in the installed uv environment: prefix each `sam ...` with `SAM_CLI_TELEMETRY=0 uv run --offline --no-project --with playwright --with aws-sam-cli`. AWS CLI is installed. Use explicit account/profile/region; do not change the profile's default region or inspect credential files.
 
-Database test reproduction (disposable localhost PostgreSQL ONLY, fixed port 55439):
+The artifact allowlist contains only `src/` and the generated package manifest, with AWS SDK supplied by Lambda. No separate handoff ZIP or diagnostic application is produced. Local DB tests use disposable localhost PostgreSQL only:
 
 ```sh
 initdb -D /tmp/khaga-commerce-pg -A trust --no-locale -E UTF8
@@ -33,132 +63,59 @@ pg_ctl -D /tmp/khaga-commerce-pg -l /tmp/khaga-commerce-pg.log -o '-p 55439 -h 1
 npm run test:commerce:db
 ```
 
-The fixture creates Supabase role/storage stubs and applies all three migrations locally. It never connects to the production database. Unit/regression tests use `npm test`; DB tests are explicitly separate.
+Reuse an already-running disposable fixture instead of reinitialising it. Never point these fixtures at Supabase. Existing browser regression fixture: real HTTPS `shop.khaga.test:55440` and `api.khaga.test:55441`, local PostgreSQL and simulated Razorpay via `test/commerce/browser-server.mjs` and `test/commerce/browser-qa.py`. Local fixture amounts, taxes and Test keys are not production settings.
 
-Real browser reproduction: install Playwright with Chromium, generate one-day localhost TLS files at `/tmp/khaga-commerce-key.pem` and `/tmp/khaga-commerce-cert.pem`, run `node test/commerce/browser-server.mjs`, then `python test/commerce/browser-qa.py`. The browser maps `shop.khaga.test` and `api.khaga.test` to loopback and makes actual HTTPS requests. Only Razorpay is simulated. Screenshot/report are written under `/tmp/khaga-commerce-browser`.
+## Prepare the single stack with purchases off
 
-## Secrets and database setup
+After the administrator provides the production IAM setup, exact ARN and API ID:
 
-1. **After the deployed-Lambda authentication check and database approval**, review `migrations/003_commerce.sql`, then apply it through the existing Supabase SQL editor as database owner after migrations 001/002. It is additive and re-runnable. Preserve `test_orders`, `test_payment_events`, catalogue/admin data and ambiguous legacy records. No data is migrated or deleted. Private tables have RLS and public execution is revoked; only `service_role` can invoke the commerce RPC.
-2. For the approved Test deployment, create only the encrypted Test JSON secret in AWS Secrets Manager. A separate Live secret is required only after future Live approval. Use the AWS console/SSO or an approved secure input channel, never raw secrets in chat, shell arguments, repository files, CI output or browser bundles. The schema is: `mode`, `keyId`, `keySecret`, `webhookSecret`, `sessionSecret`, `supabaseURL`, `secretKey`. Use separate random webhook and session secrets (at least 24 and 32 characters respectively); they must differ from each other and the Razorpay secret. Use the existing Supabase server credential. Only each environment's selected secret ARN is granted to its Lambda execution roles. The default Secrets Manager encryption key works without additional KMS grants; a customer-managed key needs a separately reviewed, scoped decrypt grant.
-3. Insert a reviewed policy row into `khaga_private.commerce_policy`. No policy is seeded by the production migration. `settings` fields are `mode` (`test`/`live`), `enabled` (boolean), `version` (increment on edits), `shippingPaise` (integer), `freeShippingAt` (integer or null), `taxBps` (0–10000), `taxTreatment` (`inclusive`/`exclusive`), `taxShipping` (boolean), `taxNote` (approved text). Missing settings fail closed. Tax rounds once at order level; ensure that is the approved business rule.
-4. Review published products in existing admin: prices in paise, `sampleApproved=true`, sellable `stock`/`preorder` variants, quantity/capacity and preorder dispatch range. Unavailable/unapproved variants cannot be purchased.
+1. Verify `aws sts get-caller-identity --profile sairn-deployer --region ap-south-1`; require account `521199095818`. Inspect stack and secret metadata only, never secret values. Missing permissions require administrator correction, not credential regeneration/self-grant.
+2. Build this branch. Prepare the SAM change set without executing it:
 
-## Test deployment (scope approved; administrator setup pending)
+   ```sh
+   sam deploy --template-file .aws-sam/build/template.yaml \
+     --config-file "$PWD/infra/samconfig.toml" --config-env prod \
+     --profile sairn-deployer --region ap-south-1 \
+     --no-execute-changeset \
+     --parameter-overrides Environment=prod PaymentMode=live \
+       LiveApiApproved=false PurchasesEnabled=false \
+       CommerceSecretArn=ACTUAL_PRODUCTION_SECRET_ARN \
+       FrontendOrigins=https://khaga.slavant.com
+   ```
 
-Complete the [administrator handoff](../infra/iam/README.md), then use `infra/samconfig.toml` and deploy the built template. Parameters contain references, never secrets:
+3. Review additions/updates and gates. The existing bootstrap `CommerceApi` must update in place, not be replaced. Exactly two functions must use production names and the mandatory production boundary. No Test/Acceptance/Staging/extra Live stack, unrelated resources, database operations or frontend activation. Execute the reviewed change-set ARN with `aws cloudformation execute-change-set --stack-name khaga-commerce-prod --change-set-name ACTUAL_CHANGE_SET_ARN --profile sairn-deployer --region ap-south-1`; wait for `stack-update-complete` and record outputs.
+4. Keep `PurchasesEnabled=false` in every setup/redeployment command, and leave Hostinger guest entry off. Infrastructure preparation does not authorise provider requests.
 
-```sh
-sam deploy --template-file .aws-sam/build/template.yaml \
-  --config-file "$PWD/infra/samconfig.toml" --config-env test \
-  --profile sairn-deployer --region ap-south-1 \
-  --parameter-overrides Environment=test LiveApproved=false \
-    TestSecretArn=YOUR_TEST_SECRET_ARN FrontendOrigins=https://khaga.slavant.com
-```
+## Deployed verification without a charge
 
-Review the change set before execution. Live does not need to be provisioned to deploy Test. Outputs are `ApiUrl`, `WebhookUrl`, `PurchaseFunction` and `ConfirmFunction`. HTTP routes:
-
-| Function | Routes |
-| --- | --- |
-| Purchase | POST `/checkout/session`, POST `/checkout/quote`, POST `/purchase` |
-| ConfirmPurchase | POST `/confirm-purchase`, POST `/payments/razorpay/webhook`, GET `/orders/{id}`, POST `/orders/{id}/reconcile` |
-
-### Resolve the known 200-local / 401-Hostinger issue early
-
-The FIRST payment check after provisioning must be this IAM-only check from the deployed Purchase Lambda. Reuse the matching Test-key pair that already passed on the owner’s Mac; do not regenerate it. After the Test stack and securely stored Test secret exist, invoke the deployed purchase function directly with IAM authorization (not an HTTP route). This performs only `GET /v1/orders?count=1` and returns safe success/error/status codes and the AWS request ID:
+**First payment call: the existing IAM-only read-only authentication check from deployed Purchase.** Before invoking it, obtain explicit owner confirmation for Live API access and set only `LiveApiApproved=true` through another reviewed change set. Keep `PurchasesEnabled=false`, `PaymentMode=live` and the same production ARN/origin. No product, shipping/tax policy or migration is needed for this check.
 
 ```sh
 aws lambda invoke --profile sairn-deployer --region ap-south-1 \
-  --function-name khaga-purchase-test --cli-binary-format raw-in-base64-out \
-  --payload '{"operatorAction":"razorpay-auth-check"}' /tmp/khaga-auth-result.json
+  --function-name khaga-purchase-prod --cli-binary-format raw-in-base64-out \
+  --payload '{"operatorAction":"razorpay-auth-check"}' /tmp/khaga-prod-auth-result.json
 ```
 
-Inspect only that safe result. Do not print secret contents or provider responses. A 401/400 authentication error is not evidence Lambda fixes the existing issue: verify account/region/function environment, selected secret ARN/version, Test mode/key prefix, exact matching pair and request construction. Check that the intended deployment is invoked and permit the one-minute secret cache to refresh. Compare the Hostinger configuration source without copying secrets to logs. Do not repeatedly rotate or regenerate shared credentials.
+Inspect only the safe status/error/request ID. It performs `GET /v1/orders?count=1`; it creates no payment/order and makes no charge. Require the returned mode to be `live`. The earlier Mac Test-pair result is not evidence for these Live credentials, and moving to Lambda is not a fix for authentication. On failure check the intended function, non-sensitive configuration references and privately entered matching Live pair; never dump secret/provider responses or rotate working keys speculatively.
 
-## API subdomain, certificate and browser security
+After authentication passes and Supabase migration approval is available:
 
-Prefer `commerce-test.slavant.com` for Test and `commerce.slavant.com` for Live. The execution API URL is suitable for the initial IAM auth check/webhook testing, but is cross-site to slavant.com. The signed cookie deliberately uses `SameSite=Lax`; **do not launch the browser flow against an execute-api domain** or loosen it to work around third-party-cookie restrictions.
+1. Verify existing migrations and take the existing project's normal recovery snapshot/backup before applying additive `migrations/003_commerce.sql` if absent, using the owner SQL editor. Preserve catalogue/admin data, legacy test orders, commerce Test orders/events and all payment mode values. Do not drop/reseed tables or relabel records. Do not insert fixture policies/products. Existing migrations 001/002 are prerequisites, not permission to reset the project.
+2. With purchases still disabled, verify the public quote/create path cannot reserve stock or create gateway orders. Keep the frontend entry off; use the existing API routes for controlled checks, not a new diagnostic app.
+3. Register the **Live** webhook `https://commerce.slavant.com/payments/razorpay/webhook` using the production `webhookSecret`, for `payment.captured`, `payment.authorized`, `payment.failed`, `order.paid`, `refund.processed`. Verify invalid signatures return rejection and produce no event/order transition. Verify an authentic provider delivery or replay of a known KHAGA event where available, including duplicate delivery idempotency. Do not fabricate captured Live payments or send Test-mode payloads as evidence of Live acceptance.
+4. Read an existing compatible KHAGA commerce order if one exists, verify mode/amount/status and protected admin visibility, redeploy with purchases disabled, and verify the same persisted order/event references afterwards. Historical Test records remain Test and may support historical-data retention evidence only. No compatible Live order/event currently supplied means actual Live payment persistence/reconciliation evidence remains pending; report that limitation.
+5. A privately signed, clearly labelled non-payment event may verify signature transport and event persistence if separately authorised, but cannot prove a captured Live order. No such probe is sent automatically. Full new-purchase/paid-order acceptance requires an explicitly approved real-money transaction if there is no suitable existing event/order.
 
-After DNS/cost approval:
+A real-money validation purchase needs the owner's explicit confirmation of product/variant, quantity, actual payable amount, payer and fulfilment handling before any payment attempt. Arrange an owner-only access window before temporarily enabling purchases; do not expose public checkout or insert simulated production tax/shipping settings. No validation charge or automatic refund is authorised. Public activation remains a separate approval after the evidence is reviewed.
 
-1. Request an ACM public certificate in the same region as the HTTP API, for the exact selected API subdomain. Add its DNS validation CNAME in the existing DNS provider only after approval.
-2. Create a Regional API Gateway custom domain with that ACM ARN and TLS 1.2; map its empty API path to this HTTP API's `$default` stage. No additional Lambda is required.
-3. Add the API Gateway target CNAME/alias for that subdomain in the existing DNS provider only after approval. Do not change the existing `khaga.slavant.com` storefront record or the main Slavant website.
-4. Set `FrontendOrigins=https://khaga.slavant.com` exactly. This is the existing KHAGA storefront; do not add the main Slavant site or a www origin. Wildcards are forbidden. Browser requests use `credentials: include`; the API independently requires the signed guest cookie, exact Origin and CSRF for mutations. Admin cookies are not used by Lambda.
-5. Set **one** Hostinger setting, `COMMERCE_API_BASE_URL=https://commerce-test.slavant.com`, only after API verification. This exposes guest checkout and injects that exact origin into checkout CSP `connect-src`; Razorpay scripts/frames retain their narrowly scoped hosts. Until this setting is supplied the current site and legacy owner Test checkout remain available.
+## Production policy and safe rollout
 
-## Webhook and hosted Test acceptance checklist
+Only approved, real production settings belong in the `live` row of `khaga_private.commerce_policy`: `mode`, `enabled`, `version`, `shippingPaise`, `freeShippingAt`, `taxBps`, `taxTreatment`, `taxShipping`, `taxNote`. Confirm sample approvals, genuine finite stock/preorder capacity, dispatch promises, and published retail prices in existing admin. Reservations count against capacity; do not subtract sold units twice. No settings are silently invented or seeded by migration 003.
 
-- Configure the **Test-mode** Razorpay webhook to the deployed `/payments/razorpay/webhook`, with the separate Test webhook secret. Subscribe to `payment.captured`, `payment.authorized`, `payment.failed`, `order.paid`, `refund.processed`. Do not reuse the payment key secret.
-- Confirm Razorpay capture settings; authorized is never treated as paid. The implementation does not initiate refunds.
-- Complete a real hosted Razorpay Test transaction from a guest desktop/mobile browser. Verify the saved amount, provider association, paid status, bag clearing and Test label in protected Orders.
-- Close the browser before its handler callback; verify webhook persistence and reopening the saved order. Deliver duplicate webhooks and verify a single order/payment state. Confirm invalid signature and other-guest UUID requests fail.
-- Cancel a payment and refresh/return from the mobile payment flow: the bag remains and status reconciliation reuses the existing provider order.
-- Redeploy the same Test stack and verify order persistence and admin visibility. The database outlives both Lambdas.
-- Test Live code with fixtures only until explicit Live approval. Live deployment requires `Environment=live`, a distinct Live secret ARN, `LiveApproved=true` and an approved enabled Live database policy. Keep Test credentials/webhook/API and records separate. No real charges without approval.
+After the owner's separate launch approval, enable the reviewed Live policy, update the two functions through the production change set with `PurchasesEnabled=true`, and configure only KHAGA's frontend with `COMMERCE_API_BASE_URL=https://commerce.slavant.com`. Verify exact-origin cookies/CSRF, guest checkout, verified payment, protected admin visibility, webhook recovery and persistence. The launch steps are documented, not executed by this handoff.
 
-## Recovery, reservations and rollback
+To close new sales, set `PurchasesEnabled=false` and turn off KHAGA guest entry. Keep Live API approval and confirmation/webhook/recovery running for outstanding orders. Do not delete stacks, drop migration 003, restore stale database snapshots, remove historical records or replace production with old archives. Redeploy the last reviewed code through the same stack.
 
-A definite received gateway rejection closes that intent and releases its reservation; the customer sees a new-checkout action. Network timeout, invalid response, Lambda termination or database bind failure retain the reservation. Customer reconciliation searches provider orders using the receipt and verifies exact receipt, amount, currency and mode notes; it never issues another provider POST. The webhook can recover a lost binding from the provider's saved order notes.
+## Remaining blockers and evidence
 
-Zero matches are not proof no order was created. For an unresolved `creating`/`creation_unknown` intent, investigate the selected account and provider support evidence. Only a database owner, after confirming no provider order/payment exists, can call `khaga_private.close_uncreated_order(order_uuid, evidence_text)` after the one-hour guard. This retains the order/audit evidence, releases capacity and exposes the customer's new-checkout action. The function is not granted to the app role or exposed over HTTP. Never close an ambiguous attempt merely because lookup is empty.
-
-Reservations include pending, captured and refund-review orders. They deliberately do not auto-expire while a gateway payment remains possible; no automated restock/refund policy is invented. Investigate abandoned payable orders with the provider before any manual inventory adjustment. Capacity updates through admin share the database lock with purchases; historical item/address/price snapshots remain immutable through the API. Additional captured payments are flagged for operator review and never automatically refunded.
-
-Rollback: unset `COMMERCE_API_BASE_URL` to stop new guest entry, disable the affected policy's `enabled` flag to stop new quotes/purchases, and deploy the last reviewed Lambda artifact through a reviewed SAM change set. Keep confirmation/reconciliation and webhook routes running for outstanding orders. Do not delete stacks while payments are in flight, drop migration 003, delete test records, roll back database snapshots or replace production with old ZIPs. Existing order status/confirmation continue when new-purchase policy is disabled.
-
-## Verification scope
-
-Local Node regression/unit tests, local real PostgreSQL transactions and Chromium HTTPS behavior are evidence for the code only. Actual AWS deployment, Supabase migration, deployed-Lambda auth check and a hosted Razorpay Test transaction require the owner's account/configuration and approval and must be reported separately.
-
-Provider contracts: [Razorpay server integration](https://razorpay.com/docs/payments/server-integration/nodejs/integration-steps/), [webhook validation](https://razorpay.com/docs/webhooks/validate-test/), [documented order receipt filter](https://github.com/razorpay/razorpay-php/blob/master/documents/order.md), [AWS HTTP API v2 payload/cookies](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-develop-integrations-lambda.html).
-
-
-## Hosted Test approval scope (prepared 2026-10-06; not deployed)
-
-The storefront origin is exactly `https://khaga.slavant.com`. The main Slavant website is outside this deployment. PR #5 remains a draft.
-
-Access inventory: AWS CLI 2.36.44 is installed; SAM CLI 1.166.2 is available in the existing uv environment, not directly on PATH. Use `SAM_CLI_TELEMETRY=0 uv run --offline --no-project --with playwright --with aws-sam-cli sam ...` for the installed SAM environment. The only configured profile is `sairn-deployer` with configured region `us-east-1`. The owner selected `sairn-deployer` for KHAGA. STS verified account `521199095818` and IAM user `arn:aws:iam::521199095818:user/sairn-deployer` (not an assumed role). Authentication is valid; no login is needed. This establishes identity, not deployment permissions. No credentials or credential files were printed. Confirmed KHAGA region: `ap-south-1` (Mumbai). No profile defaults are changed.
-
-The read-only identity check completed successfully using `sairn-deployer` and `us-east-1`. Before future deployment sessions, recheck the selected identity:
-
-```sh
-aws sts get-caller-identity --profile SELECTED_PROFILE --region SELECTED_REGION --no-cli-pager
-```
-
-If that reports missing/expired authentication, provide the specific login step for the selected profile's authentication method. Do not request access keys or session tokens in chat or assume an SSO login command applies to an unknown profile type.
-
-Approval covers a dedicated `khaga-commerce-test` SAM stack: two 256 MB ARM64 Node.js 22 functions (`khaga-purchase-test`, `khaga-confirm-purchase-test`), their execution roles and scoped policies, HTTP API/default stage and seven route integrations with Lambda invocation permissions, and two CloudWatch log groups with 14-day retention. Supporting setup includes one Test Secrets Manager secret, an administrator-created private S3 artifact bucket with the fixed Test prefix (no SAM-managed bucket/bootstrap stack), a Regional API Gateway custom domain/API mapping and one non-exportable public ACM certificate. No Live stack, VPC, NAT, EC2, database replacement, new hosted zone or provisioned concurrency is proposed.
-
-Low-volume planning allowance: **US$1–3/month**, before tax and without relying on free-tier credits, for 10,000 API/Lambda requests per month, average 2 seconds at 256 MB, one secret, at most 0.5 GB log ingestion and 0.1 GB deployment artifacts. This is an estimate, not a spending cap; regional rates, retries, traffic and logs affect the bill. Existing Supabase/Hostinger charges are excluded. Secrets Manager lists $0.40/secret/month plus request charges; public non-exportable ACM certificates integrated with API Gateway have no certificate charge. No DNS hosting charge is assumed because records will be added at the existing DNS provider. Sources checked: [API Gateway](https://aws.amazon.com/api-gateway/pricing/), [Lambda](https://aws.amazon.com/lambda/pricing/), [Secrets Manager](https://aws.amazon.com/secrets-manager/pricing/), [CloudWatch](https://aws.amazon.com/cloudwatch/pricing/), [S3](https://aws.amazon.com/s3/pricing/), [ACM](https://aws.amazon.com/certificate-manager/pricing/).
-
-Proposed secret name: `khaga/test/commerce`, encrypted with the AWS-managed Secrets Manager key. After approval, use the authenticated AWS console to enter `mode=test`, the existing matching Razorpay Test key pair that passed on the Mac, existing Supabase URL/server key, and newly generated independent webhook/session secrets. Do not rotate the existing Razorpay or Supabase credentials. Keep all values out of chat, CLI arguments, logs and Git; share only the resulting secret ARN. The Lambda roles receive access only to that ARN. The console is the proposed provisioning method unless an already-approved secure transfer method is selected.
-
-Proposed API hostname remains `commerce-test.slavant.com`. Add only ACM's generated validation CNAME and the API hostname CNAME/alias targeting the Regional API Gateway domain, plus its empty-path mapping to this Test API. Exact generated record names/targets will be reviewed after certificate/domain creation. Preserve both the `khaga.slavant.com` storefront record and all main Slavant records. The certificate must be in the approved API region.
-
-Account/profile/region and Secrets Manager provisioning are now confirmed. Remaining purchase-only choices, including the public catalogue proposal and shared sample/capacity constraints, are collected in the [administrator handoff](../infra/iam/README.md#deployment-order-and-purchase-only-choices). They do not block infrastructure or the IAM-only authentication check.
-
-Execution order after scope approval: provision Test infrastructure and securely provision its Test secret; **FIRST payment check: invoke `operatorAction=razorpay-auth-check` through IAM on deployed Purchase**; investigate any failure in that deployed configuration without regenerating the known matching keys; then apply the approved additive Supabase migration/policy, configure the approved certificate/DNS/webhook, and deploy the branch's KHAGA frontend with the exact API base. Run the guest product → bag → quote → hosted Test payment → verified saved order → protected admin flow, the missed-callback/webhook flow, then redeploy and recheck persistence. Report deployed AWS/Supabase/Razorpay evidence separately from the existing local/mocked results. Live activation needs separate approval after hosted acceptance passes.
-
-
-## Approved deployment attempt: access blockers
-
-The owner approved the proposed Test scope and instructed execution. No further scope approval is required for that Test setup. Deployment preflight in `ap-south-1`, using the selected `sairn-deployer` profile, verified account `521199095818` again but received the following AWS authorization failures:
-
-| Read-only operation | Result |
-| --- | --- |
-| `sts:GetCallerIdentity` | Success: IAM user `sairn-deployer`; authentication is valid |
-| `cloudformation:DescribeStacks` for `khaga-commerce-test` | AccessDenied: no identity-based policy allows the action |
-| `secretsmanager:DescribeSecret` for `khaga/test/commerce` | AccessDenied: no identity-based policy allows the action |
-| `acm:ListCertificates` | AccessDenied: no identity-based policy allows the action |
-| `route53:ListHostedZonesByName` | AccessDenied: no identity-based policy allows the action |
-
-These denials do not establish whether a KHAGA stack or secret already exists. An expired login is not the issue; do not rotate credentials or repeat login as a remedy. The deployment cannot safely proceed until an account administrator supplies a deployment-capable role/profile or grants appropriately scoped KHAGA Test permissions. No attempt was made to grant privileges to the existing Sairn identity.
-
-The earlier broad access request is replaced by the [exact administrator IAM bundle](../infra/iam/README.md). Use the existing `sairn-deployer` identity, a dedicated CloudFormation role, bounded Lambda roles, and an explicit artifact bucket. The administrator provisions the supporting secret/certificate/domain and first empty API; rendered policies scope subsequent deployment to its actual API ID and secret ARN. No alternative profile, self-grant, AdministratorAccess, existing Sairn policy changes, or Route 53 access is requested.
-
-Public DNS currently delegates `slavant.com` to `ns1.dns-parking.com` and `ns2.dns-parking.com`; no A or CNAME answer was returned for `commerce-test.slavant.com`. The Test records need access to the existing DNS provider, not a new Route 53 hosted zone. Route 53 access is therefore unnecessary if DNS is managed through the current provider. Only the ACM validation record and Test API hostname record are in scope.
-
-No relevant Razorpay, Supabase or Hostinger variables were present in the deployment process environment, and no private `.env` file existed in the KHAGA workspace. No credential files or secret values were printed. The owner will enter the existing matching Test pair and Supabase configuration privately in Secrets Manager and supply only its ARN; no local payment-secret file is requested. Business policy values still need explicit Test settings; a general deployment approval does not invent shipping, tax, retail price or capacity values.
-
-Local SAM validation/build completed; AWS resource creation, production Supabase migration, DNS changes, Hostinger update and payment checks have not begun. The next step remains permission/secure-input resolution, followed by provisioning. The first payment check remains the deployed Purchase Lambda IAM-only authentication check; no local Razorpay request was made during this attempt. Hosted acceptance remains pending and must be reported separately from local fixture results.
+All genuine owner/admin prerequisites are collected in the [administrator handoff](../infra/iam/README.md#immediate-setup-and-remaining-blockers). No Test product/fixture approval or additional AWS environment is required. Report local automated results separately from deployed authentication, webhook and order-persistence evidence. Real-money verification and public activation always require their own explicit approvals. PR #5 remains a draft pending hosted acceptance.

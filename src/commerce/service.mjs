@@ -5,10 +5,12 @@ import {requireThat as need} from '../management/errors.mjs';
 import {price,publicOrder} from './model.mjs';
 export function commerceService({repo,store,provider,config}){
  const owned=async(id,guest)=>{need(uuidPattern.test(id||''),404,'ORDER_NOT_FOUND','Order not found.');const o=await store.get(id);need(o&&o.mode===config.mode&&o.guest_hash===sha(guest),404,'ORDER_NOT_FOUND','Order not found in this browser.');return o;};
- const quote=async items=>price(items,await publishedSnapshot(repo),await store.policy(),config.mode);
- const options=o=>o.status==='payment_pending'?{keyId:config.keyId,orderId:o.provider_id,amount:o.body.quote.total,currency:'INR'}:null;
+ const purchasesAllowed=()=>need(config.purchasesEnabled===true,503,'PURCHASES_DISABLED','New purchases are not available yet.');
+ const quote=async items=>{purchasesAllowed();return price(items,await publishedSnapshot(repo),await store.policy(),config.mode);};
+ const options=o=>config.purchasesEnabled===true&&o.status==='payment_pending'?{keyId:config.keyId,orderId:o.provider_id,amount:o.body.quote.total,currency:'INR'}:null;
  const result=(o,payment=null)=>({order:publicOrder(o),payment});
  async function create(input,guest){
+  purchasesAllowed();
   need(/^[a-f0-9]{64}$/.test(input?.requestKey||''),422,'INVALID_REQUEST','Reload checkout before submitting.');
   const customer=customerInput(input.customer),q=await quote(input.items);
   need(q.hash===input.quoteHash,409,'QUOTE_CHANGED','Prices or settings changed. Review your total again.');

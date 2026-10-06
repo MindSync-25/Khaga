@@ -22,7 +22,7 @@ if a.copy:
  print('Copied privately to clipboard. Paste into AWS, then clear clipboard with: pbcopy < /dev/null')
 else:
  if a.directory:p.error('Generation chooses a fresh private temporary directory; do not supply --directory')
- directory=pathlib.Path(tempfile.mkdtemp(prefix='khaga-test-secrets-',dir='/private/tmp'))
+ directory=pathlib.Path(tempfile.mkdtemp(prefix='khaga-prod-secrets-',dir='/private/tmp'))
  for name in ['webhookSecret','sessionSecret']:
   fd=os.open(directory/(name+'.txt'),os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
   with os.fdopen(fd,'w') as stream:stream.write(secrets.token_hex(32)+'\n')

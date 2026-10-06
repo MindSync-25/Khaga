@@ -8,7 +8,7 @@
         "s3:GetObject",
         "s3:GetObjectVersion"
       ],
-      "Resource": "arn:aws:s3:::khaga-test-artifacts-521199095818-ap-south-1/khaga-commerce-test/*"
+      "Resource": "arn:aws:s3:::khaga-prod-artifacts-521199095818-ap-south-1/khaga-commerce-prod/*"
     },
     {
       "Sid": "ManageTwoFunctions",
@@ -28,8 +28,8 @@
         "lambda:UntagResource"
       ],
       "Resource": [
-        "arn:aws:lambda:ap-south-1:521199095818:function:khaga-purchase-test",
-        "arn:aws:lambda:ap-south-1:521199095818:function:khaga-confirm-purchase-test"
+        "arn:aws:lambda:ap-south-1:521199095818:function:khaga-purchase-prod",
+        "arn:aws:lambda:ap-south-1:521199095818:function:khaga-confirm-purchase-prod"
       ]
     },
     {
@@ -39,12 +39,12 @@
         "iam:CreateRole"
       ],
       "Resource": [
-        "arn:aws:iam::521199095818:role/khaga-commerce-test-PurchaseRole-*",
-        "arn:aws:iam::521199095818:role/khaga-commerce-test-ConfirmPurchaseRole-*"
+        "arn:aws:iam::521199095818:role/khaga-commerce-prod-PurchaseRole-*",
+        "arn:aws:iam::521199095818:role/khaga-commerce-prod-ConfirmPurchaseRole-*"
       ],
       "Condition": {
         "ArnEquals": {
-          "iam:PermissionsBoundary": "arn:aws:iam::521199095818:policy/khaga-test-runtime-boundary"
+          "iam:PermissionsBoundary": "arn:aws:iam::521199095818:policy/khaga-prod-runtime-boundary"
         }
       }
     },
@@ -63,8 +63,8 @@
         "iam:UntagRole"
       ],
       "Resource": [
-        "arn:aws:iam::521199095818:role/khaga-commerce-test-PurchaseRole-*",
-        "arn:aws:iam::521199095818:role/khaga-commerce-test-ConfirmPurchaseRole-*"
+        "arn:aws:iam::521199095818:role/khaga-commerce-prod-PurchaseRole-*",
+        "arn:aws:iam::521199095818:role/khaga-commerce-prod-ConfirmPurchaseRole-*"
       ]
     },
     {
@@ -75,8 +75,8 @@
         "iam:DetachRolePolicy"
       ],
       "Resource": [
-        "arn:aws:iam::521199095818:role/khaga-commerce-test-PurchaseRole-*",
-        "arn:aws:iam::521199095818:role/khaga-commerce-test-ConfirmPurchaseRole-*"
+        "arn:aws:iam::521199095818:role/khaga-commerce-prod-PurchaseRole-*",
+        "arn:aws:iam::521199095818:role/khaga-commerce-prod-ConfirmPurchaseRole-*"
       ],
       "Condition": {
         "ArnEquals": {
@@ -91,8 +91,8 @@
         "iam:PassRole"
       ],
       "Resource": [
-        "arn:aws:iam::521199095818:role/khaga-commerce-test-PurchaseRole-*",
-        "arn:aws:iam::521199095818:role/khaga-commerce-test-ConfirmPurchaseRole-*"
+        "arn:aws:iam::521199095818:role/khaga-commerce-prod-PurchaseRole-*",
+        "arn:aws:iam::521199095818:role/khaga-commerce-prod-ConfirmPurchaseRole-*"
       ],
       "Condition": {
         "StringEquals": {
@@ -101,7 +101,7 @@
       }
     },
     {
-      "Sid": "ManageOnlyTestApi",
+      "Sid": "ManageOnlyProdApi",
       "Effect": "Allow",
       "Action": [
         "apigateway:GET",
@@ -110,16 +110,16 @@
         "apigateway:DELETE",
         "apigateway:POST"
       ],
-      "Resource": "arn:aws:apigateway:ap-south-1::/apis/REPLACE_WITH_TEST_API_ID"
+      "Resource": "arn:aws:apigateway:ap-south-1::/apis/REPLACE_WITH_PROD_API_ID"
     },
     {
-      "Sid": "ManageOnlyTestStage",
+      "Sid": "ManageOnlyProdStage",
       "Effect": "Allow",
       "Action": [
         "apigateway:GET",
         "apigateway:POST"
       ],
-      "Resource": "arn:aws:apigateway:ap-south-1::/apis/REPLACE_WITH_TEST_API_ID/stages"
+      "Resource": "arn:aws:apigateway:ap-south-1::/apis/REPLACE_WITH_PROD_API_ID/stages"
     },
     {
       "Sid": "ManageDefaultStage",
@@ -129,10 +129,10 @@
         "apigateway:PATCH",
         "apigateway:DELETE"
       ],
-      "Resource": "arn:aws:apigateway:ap-south-1::/apis/REPLACE_WITH_TEST_API_ID/stages/$default"
+      "Resource": "arn:aws:apigateway:ap-south-1::/apis/REPLACE_WITH_PROD_API_ID/stages/$default"
     },
     {
-      "Sid": "ManageTestLogs",
+      "Sid": "ManageProdLogs",
       "Effect": "Allow",
       "Action": [
         "logs:CreateLogGroup",
@@ -144,10 +144,10 @@
         "logs:ListTagsForResource"
       ],
       "Resource": [
-        "arn:aws:logs:ap-south-1:521199095818:log-group:/aws/lambda/khaga-purchase-test",
-        "arn:aws:logs:ap-south-1:521199095818:log-group:/aws/lambda/khaga-confirm-purchase-test",
-        "arn:aws:logs:ap-south-1:521199095818:log-group:/aws/lambda/khaga-purchase-test:*",
-        "arn:aws:logs:ap-south-1:521199095818:log-group:/aws/lambda/khaga-confirm-purchase-test:*"
+        "arn:aws:logs:ap-south-1:521199095818:log-group:/aws/lambda/khaga-purchase-prod",
+        "arn:aws:logs:ap-south-1:521199095818:log-group:/aws/lambda/khaga-confirm-purchase-prod",
+        "arn:aws:logs:ap-south-1:521199095818:log-group:/aws/lambda/khaga-purchase-prod:*",
+        "arn:aws:logs:ap-south-1:521199095818:log-group:/aws/lambda/khaga-confirm-purchase-prod:*"
       ]
     },
     {
@@ -164,7 +164,7 @@
       }
     },
     {
-      "Sid": "TagOnlyTestApiAndStage",
+      "Sid": "TagOnlyProdApiAndStage",
       "Effect": "Allow",
       "Action": [
         "apigateway:GET",
@@ -174,10 +174,10 @@
         "apigateway:DELETE"
       ],
       "Resource": [
-        "arn:aws:apigateway:ap-south-1::/tags/arn:aws:apigateway:ap-south-1::/apis/REPLACE_WITH_TEST_API_ID",
-        "arn:aws:apigateway:ap-south-1::/tags/arn%3Aaws%3Aapigateway%3Aap-south-1%3A%3A%2Fapis%2FREPLACE_WITH_TEST_API_ID",
-        "arn:aws:apigateway:ap-south-1::/tags/arn:aws:apigateway:ap-south-1::/apis/REPLACE_WITH_TEST_API_ID/stages/$default",
-        "arn:aws:apigateway:ap-south-1::/tags/arn%3Aaws%3Aapigateway%3Aap-south-1%3A%3A%2Fapis%2FREPLACE_WITH_TEST_API_ID%2Fstages%2F%24default"
+        "arn:aws:apigateway:ap-south-1::/tags/arn:aws:apigateway:ap-south-1::/apis/REPLACE_WITH_PROD_API_ID",
+        "arn:aws:apigateway:ap-south-1::/tags/arn%3Aaws%3Aapigateway%3Aap-south-1%3A%3A%2Fapis%2FREPLACE_WITH_PROD_API_ID",
+        "arn:aws:apigateway:ap-south-1::/tags/arn:aws:apigateway:ap-south-1::/apis/REPLACE_WITH_PROD_API_ID/stages/$default",
+        "arn:aws:apigateway:ap-south-1::/tags/arn%3Aaws%3Aapigateway%3Aap-south-1%3A%3A%2Fapis%2FREPLACE_WITH_PROD_API_ID%2Fstages%2F%24default"
       ]
     }
   ]

@@ -2,23 +2,23 @@
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "OnlyTestSecret",
+      "Sid": "OnlyProdSecret",
       "Effect": "Allow",
       "Action": [
         "secretsmanager:GetSecretValue"
       ],
-      "Resource": "REPLACE_WITH_TEST_SECRET_ARN"
+      "Resource": "REPLACE_WITH_PROD_SECRET_ARN"
     },
     {
-      "Sid": "OnlyTestLogStreams",
+      "Sid": "OnlyProdLogStreams",
       "Effect": "Allow",
       "Action": [
         "logs:CreateLogStream",
         "logs:PutLogEvents"
       ],
       "Resource": [
-        "arn:aws:logs:ap-south-1:521199095818:log-group:/aws/lambda/khaga-purchase-test:log-stream:*",
-        "arn:aws:logs:ap-south-1:521199095818:log-group:/aws/lambda/khaga-confirm-purchase-test:log-stream:*"
+        "arn:aws:logs:ap-south-1:521199095818:log-group:/aws/lambda/khaga-purchase-prod:log-stream:*",
+        "arn:aws:logs:ap-south-1:521199095818:log-group:/aws/lambda/khaga-confirm-purchase-prod:log-stream:*"
       ]
     }
   ]

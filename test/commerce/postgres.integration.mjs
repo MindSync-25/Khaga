@@ -10,7 +10,7 @@ const customer={name:'Fixture Buyer',email:'fixture@example.invalid',phone:'9876
 await setup();await seedPolicy();await seedPolicy('live');
 const repo=new LocalRepository();
 function harness(mode='test'){
- const config={mode,keyId:'rzp_'+mode+'_fixture',keySecret:'fixture-secret',webhookSecret:'w'.repeat(32)};
+ const config={purchasesEnabled:true,mode,keyId:'rzp_'+mode+'_fixture',keySecret:'fixture-secret',webhookSecret:'w'.repeat(32)};
  const store=new CommerceStore(repo,mode);let creates=0,orders=new Map(),payments=[];
  const provider={async create(o){creates++;const id='order_'+o.id.replaceAll('-','');orders.set(id,{id,receipt:o.id,amount:o.body.quote.total,currency:'INR',status:'created',notes:{khaga_order_id:o.id,khaga_mode:mode}});return id;},async findOrder(o){return [...orders.values()].find(x=>x.receipt===o.id)||null;},async order(o){return orders.get(o.provider_id);},async payments(){return payments;},async payment(id){return payments.find(p=>p.id===id);},async request(path){return orders.get(path.split('/').pop());}};
  const service=commerceService({repo,store,provider,config});
@@ -92,4 +92,23 @@ test('webhook database failure is not acknowledged, replay can complete after re
  const mark=h.store.mark.bind(h.store);h.store.mark=async()=>{throw Error('storage unavailable')};
  await assert.rejects(h.service.webhook(raw,signature,'evt-persist-'+r.order.id));assert.equal((await h.store.get(r.order.id)).status,'payment_pending');
  h.store.mark=mark;await h.service.webhook(raw,signature,'evt-persist-'+r.order.id);assert.equal((await h.store.get(r.order.id)).status,'paid');
+});
+test('closing new sales retains confirmation, signed webhook and persistence without offering payment',async()=>{
+ const h=harness('live'),body=await input(h),guest=randomUUID(),r=await h.service.create(body,guest);
+ const payment={id:'pay_'+r.order.id.replaceAll('-',''),order_id:r.payment.orderId,amount:r.payment.amount,currency:'INR',status:'captured',captured:true};
+ h.config.purchasesEnabled=false;
+ assert.equal((await h.service.reconcile(r.order.id,guest)).payment,null);
+ await assert.rejects(h.service.create(body,guest),{code:'PURCHASES_DISABLED'});
+ h.payments=[payment];
+ const raw=Buffer.from(JSON.stringify({event:'payment.captured',payload:{payment:{entity:{id:payment.id}}}}));
+ const signature=createHmac('sha256',h.config.webhookSecret).update(raw).digest('hex');
+ await assert.rejects(h.service.webhook(raw,'bad','closed-'+r.order.id),{code:'INVALID_SIGNATURE'});
+ await h.service.webhook(raw,signature,'closed-'+r.order.id);
+ await h.service.webhook(raw,signature,'closed-'+r.order.id);
+ const callback={razorpay_order_id:payment.order_id,razorpay_payment_id:payment.id,razorpay_signature:createHmac('sha256',h.config.keySecret).update(payment.order_id+'|'+payment.id).digest('hex')};
+ assert.equal((await h.service.verify(r.order.id,guest,callback)).order.status,'paid');
+ assert.equal((await new CommerceStore(repo,'live').get(r.order.id)).status,'paid');
+ assert.equal(await new CommerceStore(repo,'test').get(r.order.id),null);
+ assert.equal(h.creates,1);
+ assert.equal(await sql(`SELECT count(*) FROM khaga_private.commerce_events WHERE order_id=${literal(r.order.id)}`),'1');
 });

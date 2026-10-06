@@ -7,8 +7,8 @@
       "Principal": "*",
       "Action": "s3:*",
       "Resource": [
-        "arn:aws:s3:::khaga-test-artifacts-521199095818-ap-south-1",
-        "arn:aws:s3:::khaga-test-artifacts-521199095818-ap-south-1/*"
+        "arn:aws:s3:::khaga-prod-artifacts-521199095818-ap-south-1",
+        "arn:aws:s3:::khaga-prod-artifacts-521199095818-ap-south-1/*"
       ],
       "Condition": {
         "Bool": {

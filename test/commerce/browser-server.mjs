@@ -9,7 +9,7 @@ import {CommerceStore} from '../../src/commerce/store.mjs';
 import {setup,LocalRepository,seedProduct,seedPolicy} from './local-postgres.mjs';
 await setup();await seedPolicy();await seedProduct('browser-fixture',1000);
 const repo=new LocalRepository(),store=new CommerceStore(repo,'test');
-const config={mode:'test',keyId:'rzp_test_fixture',keySecret:'local-fixture-secret',webhookSecret:'w'.repeat(32),sessionSecret:'s'.repeat(32),origins:['https://shop.khaga.test:55440']};
+const config={purchasesEnabled:true,mode:'test',keyId:'rzp_test_fixture',keySecret:'local-fixture-secret',webhookSecret:'w'.repeat(32),sessionSecret:'s'.repeat(32),origins:['https://shop.khaga.test:55440']};
 const gateway=new Map(),payments=new Map();let creates=0;
 const provider={async create(o){creates++;const id='order_'+o.id.replaceAll('-','');gateway.set(id,{id,receipt:o.id,amount:o.body.quote.total,currency:'INR',status:'created',notes:{khaga_order_id:o.id,khaga_mode:'test'}});return id;},async findOrder(o){return [...gateway.values()].find(x=>x.receipt===o.id)||null;},async order(o){return gateway.get(o.provider_id);},async payments(id){return [...payments.values()].filter(p=>p.order_id===id);},async payment(id){return payments.get(id);},async request(path){return gateway.get(path.split('/').pop());}};
 const service=commerceService({repo,store,provider,config}),runtime=async()=>({config,repo,store,provider,service});

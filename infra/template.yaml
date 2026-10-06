@@ -1,40 +1,41 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: KHAGA commerce - exactly two native Lambda functions per environment
+Description: KHAGA single production stack - two native Lambda functions; purchases disabled during setup
 Parameters:
   Environment:
     Type: String
-    Default: test
-    AllowedValues: [test, live]
-  LiveApproved:
+    Default: prod
+    AllowedValues: [prod]
+    Description: Infrastructure label only; payment mode is independent
+  PaymentMode:
+    Type: String
+    Default: live
+    AllowedValues: [live]
+  LiveApiApproved:
     Type: String
     Default: 'false'
     AllowedValues: ['false', 'true']
-  TestSecretArn:
+    Description: Owner authorisation to access Razorpay Live APIs, not approval to charge
+  PurchasesEnabled:
     Type: String
-    AllowedPattern: '^arn:aws[a-z-]*:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+$'
-    Description: Secrets Manager ARN for Test configuration (no secret values)
-  LiveSecretArn:
+    Default: 'false'
+    AllowedValues: ['false', 'true']
+    Description: Enable new customer purchases only after separate activation approval
+  CommerceSecretArn:
     Type: String
-    Default: 'arn:aws:secretsmanager:us-east-1:000000000000:secret:LIVE-NOT-CONFIGURED'
-    AllowedPattern: '^arn:aws[a-z-]*:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+$'
-    Description: Separate Live secret ARN, required only for approved Live stack
+    AllowedPattern: '^arn:aws:secretsmanager:ap-south-1:521199095818:secret:khaga/prod/commerce-[A-Za-z0-9]{6}$'
+    Description: Exact production Secrets Manager ARN; no secret values
   FrontendOrigins:
     Type: CommaDelimitedList
-    AllowedPattern: '^https://[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::[0-9]{1,5})?$'
-    Description: Exact HTTPS storefront origins, no wildcard or trailing slash
-Conditions:
-  IsLive: !Equals [!Ref Environment, live]
+    Default: https://khaga.slavant.com
+    AllowedValues: ['https://khaga.slavant.com']
+    Description: Existing KHAGA storefront only
 Rules:
-  ApproveLive:
-    RuleCondition: !Equals [!Ref Environment, live]
+  PurchaseApprovalRequiresApiApproval:
+    RuleCondition: !Equals [!Ref PurchasesEnabled, 'true']
     Assertions:
-      - Assert: !Equals [!Ref LiveApproved, 'true']
-        AssertDescription: Live must be explicitly approved
-      - Assert: !Not [!Equals [!Ref LiveSecretArn, 'arn:aws:secretsmanager:us-east-1:000000000000:secret:LIVE-NOT-CONFIGURED']]
-        AssertDescription: Live needs its own secret
-      - Assert: !Not [!Equals [!Ref LiveSecretArn, !Ref TestSecretArn]]
-        AssertDescription: Test and Live secret references must differ
+      - Assert: !Equals [!Ref LiveApiApproved, 'true']
+        AssertDescription: New purchases require prior Live API approval
 Globals:
   Function:
     Runtime: nodejs22.x
@@ -44,9 +45,11 @@ Globals:
     CodeUri: ../dist/commerce/
     Environment:
       Variables:
-        COMMERCE_MODE: !Ref Environment
-        LIVE_APPROVED: !Ref LiveApproved
-        COMMERCE_SECRET_ARN: !If [IsLive, !Ref LiveSecretArn, !Ref TestSecretArn]
+        COMMERCE_ENVIRONMENT: !Ref Environment
+        COMMERCE_MODE: !Ref PaymentMode
+        LIVE_API_APPROVED: !Ref LiveApiApproved
+        PURCHASES_ENABLED: !Ref PurchasesEnabled
+        COMMERCE_SECRET_ARN: !Ref CommerceSecretArn
         FRONTEND_ORIGINS: !Join [',', !Ref FrontendOrigins]
 Resources:
   CommerceApi:
@@ -67,13 +70,13 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub khaga-purchase-${Environment}
-      PermissionsBoundary: !If [IsLive, !Ref 'AWS::NoValue', 'arn:aws:iam::521199095818:policy/khaga-test-runtime-boundary']
+      PermissionsBoundary: 'arn:aws:iam::521199095818:policy/khaga-prod-runtime-boundary'
       Handler: src/commerce/purchase.handler
       Policies:
         - Statement:
             - Effect: Allow
               Action: secretsmanager:GetSecretValue
-              Resource: !If [IsLive, !Ref LiveSecretArn, !Ref TestSecretArn]
+              Resource: !Ref CommerceSecretArn
       Events:
         Session:
           Type: HttpApi
@@ -88,13 +91,13 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub khaga-confirm-purchase-${Environment}
-      PermissionsBoundary: !If [IsLive, !Ref 'AWS::NoValue', 'arn:aws:iam::521199095818:policy/khaga-test-runtime-boundary']
+      PermissionsBoundary: 'arn:aws:iam::521199095818:policy/khaga-prod-runtime-boundary'
       Handler: src/commerce/confirm-purchase.handler
       Policies:
         - Statement:
             - Effect: Allow
               Action: secretsmanager:GetSecretValue
-              Resource: !If [IsLive, !Ref LiveSecretArn, !Ref TestSecretArn]
+              Resource: !Ref CommerceSecretArn
       Events:
         Confirm:
           Type: HttpApi

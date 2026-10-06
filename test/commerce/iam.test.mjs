@@ -67,3 +67,23 @@ test('execution role can process only the regional SAM transform, not arbitrary 
  assert.ok(summary.Action.includes('cloudformation:GetTemplateSummary'));
  assert.equal(summary.Resource,'arn:aws:cloudformation:ap-south-1:521199095818:stack/khaga-commerce-prod/*');
 });
+test('actual API Gateway v2 tag denial and default stage are covered only for the rendered API',()=>{
+ const api='1ssp74gnt2';
+ const rendered=JSON.parse(JSON.stringify(execution).replaceAll('REPLACE_WITH_PROD_API_ID',api));
+ // Static source-grant matching only; this does not simulate AWS effective permissions.
+ const allows=(action,resource)=>rendered.Statement.some(s=>s.Effect==='Allow'&&arr(s.Action).includes(action)&&arr(s.Resource).includes(resource));
+ const actual='arn:aws:apigateway:ap-south-1::/tags/arn%3Aaws%3Aapigateway%3Aap-south-1%3A%3A%2Fv2%2Fapis%2F1ssp74gnt2';
+ const stage=actual+'%2Fstages%2F%24default';
+ for(const action of ['apigateway:GET','apigateway:POST','apigateway:DELETE']){
+  for(const resource of [actual,stage,actual.replace('%2Fv2',''),stage.replace('%2Fv2','')]){
+   assert.equal(allows(action,resource),true,resource);
+   assert.equal(allows(action,resource.replace(api,'9otherapi0')),false);
+   const prefix='arn:aws:apigateway:ap-south-1::/tags/';
+   const raw=prefix+decodeURIComponent(resource.slice(prefix.length));
+   assert.equal(allows(action,raw),true,raw);
+   assert.equal(allows(action,raw.replace(api,'9otherapi0')),false);
+  }
+ }
+ assert.equal(allows('apigateway:POST',actual+'%2Fstages%2Fother'),false);
+ assert.equal(allows('apigateway:POST',actual.replace('ap-south-1','us-east-1')),false);
+});

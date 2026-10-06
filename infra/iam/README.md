@@ -103,3 +103,31 @@ Outstanding items are collected here:
 - Separate explicit confirmation for any real-money validation purchase (product, quantity, actual total, payer and fulfilment handling) and separate public checkout activation. Neither is authorised now.
 
 Deployment, safe verification sequence and approval gates: [production deployment guide](../../docs/commerce-deployment.md). No extra diagnostic app or AWS testing environment is required.
+
+## API v2 tag failure review and lifecycle cross-check (2026-10-06)
+
+The previous executed update (11:40:06–11:41:19 UTC) produced 37 stack events. The complete paginated event review found exactly one failed resource: `CommerceApi`, `UPDATE_FAILED`, with `AccessDeniedException` for `apigateway:POST` on:
+
+```text
+arn:aws:apigateway:ap-south-1::/tags/arn%3Aaws%3Aapigateway%3Aap-south-1%3A%3A%2Fv2%2Fapis%2F1ssp74gnt2
+```
+
+There were **zero** “resource creation cancelled” events and no other independent failures. Six resources (two functions, roles and log groups) completed creation and were automatically deleted during successful rollback. That cleanup is not a separate access denial. API `1ssp74gnt2` survived; terminal stack state was `UPDATE_ROLLBACK_COMPLETE`.
+
+`TagOnlyProdApiAndStage` now includes raw and encoded `/v2/apis/REPLACE_WITH_PROD_API_ID` and its `/stages/$default` tag-resource variants, in addition to the original `/apis/` variants. The administrator applied the equivalent as `khaga-prod-api-v2-tags`; no AWS IAM changes are made by this branch. Regression assertions use the actual denied ARN, its default-stage ARN, raw equivalents, original variants, and negative cases for another API/stage/region. These assertions check source grants only; they are not AWS IAM simulation or evidence of effective access. [API Gateway tagging operations](https://docs.aws.amazon.com/apigatewayv2/latest/api-reference/tags-resource-arn.html), [IAM resource/action reference](https://docs.aws.amazon.com/service-authorization/latest/reference/list_apigatewayv2.html).
+
+Cross-check against the processed SAM template (15 resources) and current source policies:
+
+| Actor / resources | Lifecycle, tagging and scope reviewed |
+| --- | --- |
+| Deployer | Stack-scoped summary/describe/template/change-set create/review/execute; exact CloudFormation role PassRole condition; regional SAM transform; S3 uploads/reads limited to the production bucket/prefix. These operations succeeded in the previous attempt after administrator corrections. |
+| CloudFormation / SAM | Exact regional transform permission plus read access to the packaged artifact. No deployment-stack wildcard or account-wide transform grant. |
+| Two Lambda functions | Create/read/update-code/update-configuration/delete, tag/untag/list-tags and pass only the two bounded runtime roles to Lambda. Function creation and rollback deletion previously succeeded. No versions, aliases, layers, concurrency configuration, VPC or event-source-mapping resources occur in this template. |
+| Two IAM roles | Creation requires the exact runtime boundary; role read/delete, inline-policy put/get/delete, basic-logging managed-policy attach/detach, role tags/untags and policy listing are scoped to generated production role prefixes. Creation and rollback succeeded. The unchanged trust/boundary does not require trust-policy or boundary mutation grants for this change set. |
+| Two log groups | Create/read-metadata, retention set/delete, tag/untag/list-tags and delete on the two production groups. Creation and rollback succeeded. Runtime only creates streams/writes events inside those groups; it cannot create arbitrary groups. |
+| Existing HTTP API | GET/PATCH/PUT/POST/DELETE on the exact API; OpenAPI reimport manages its routes/integrations inline. No separate route/integration CloudFormation resources or API Gateway integration role exist. Tag GET/POST/DELETE includes the actual raw/encoded v2 ARN variants. API replacement remains forbidden by change-set review. |
+| Default stage | Collection GET/POST on this API, stage GET/PATCH/DELETE on `$default`, plus stage tag variants. SAM adds `httpapi:createdBy`; auto-deploy needs no separate deployment resource. This stage was not reached in the failed update, so its effective access is not yet established. |
+| Seven Lambda invocation permissions | AddPermission/RemovePermission/GetPolicy limited to the two function ARNs. These resources were not reached in the failed update; success must be checked during execution. |
+| Runtime roles | Generated inline policy reads only the production secret ARN; basic logging is intersected with the administrator-owned boundary limiting streams/events to two groups. The runtime grants neither resource provisioning nor cross-secret access. Secret retrieval/runtime invocation are not tested during this closed deployment; no payment request is authorised. |
+
+No additional concrete omission was identified for this planned update after the exact v2-tag correction. This is not a guarantee about future template changes, SCPs, policy versions, service behaviour or effective AWS permissions. Fresh change-set creation/execution and actual stack events are the deployment evidence. Preserve both false flags; do not add speculative permissions or treat cancellations as new policy requirements.

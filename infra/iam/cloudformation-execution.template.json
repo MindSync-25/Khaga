@@ -177,7 +177,11 @@
         "arn:aws:apigateway:ap-south-1::/tags/arn:aws:apigateway:ap-south-1::/apis/REPLACE_WITH_PROD_API_ID",
         "arn:aws:apigateway:ap-south-1::/tags/arn%3Aaws%3Aapigateway%3Aap-south-1%3A%3A%2Fapis%2FREPLACE_WITH_PROD_API_ID",
         "arn:aws:apigateway:ap-south-1::/tags/arn:aws:apigateway:ap-south-1::/apis/REPLACE_WITH_PROD_API_ID/stages/$default",
-        "arn:aws:apigateway:ap-south-1::/tags/arn%3Aaws%3Aapigateway%3Aap-south-1%3A%3A%2Fapis%2FREPLACE_WITH_PROD_API_ID%2Fstages%2F%24default"
+        "arn:aws:apigateway:ap-south-1::/tags/arn%3Aaws%3Aapigateway%3Aap-south-1%3A%3A%2Fapis%2FREPLACE_WITH_PROD_API_ID%2Fstages%2F%24default",
+        "arn:aws:apigateway:ap-south-1::/tags/arn:aws:apigateway:ap-south-1::/v2/apis/REPLACE_WITH_PROD_API_ID",
+        "arn:aws:apigateway:ap-south-1::/tags/arn%3Aaws%3Aapigateway%3Aap-south-1%3A%3A%2Fv2%2Fapis%2FREPLACE_WITH_PROD_API_ID",
+        "arn:aws:apigateway:ap-south-1::/tags/arn:aws:apigateway:ap-south-1::/v2/apis/REPLACE_WITH_PROD_API_ID/stages/$default",
+        "arn:aws:apigateway:ap-south-1::/tags/arn%3Aaws%3Aapigateway%3Aap-south-1%3A%3A%2Fv2%2Fapis%2FREPLACE_WITH_PROD_API_ID%2Fstages%2F%24default"
       ]
     },
     {

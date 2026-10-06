@@ -137,3 +137,34 @@ Proposed API hostname remains `commerce-test.slavant.com`. Add only ACM's genera
 Collect remaining Test choices together: approval of account `521199095818` / selected profile `sairn-deployer` and proposed region `ap-south-1`; API hostname/DNS access; secure secret provisioning method and location of the already-validated Test pair (reference only); existing Supabase project and approval for migration 003; a published test product/variant, price and finite stock/preorder capacity; explicit Test shipping amount/threshold, tax rate and inclusive/exclusive/shipping-tax treatment and wording; a hosted checkout test window and permission for the KHAGA-only Hostinger deployment/commerce setting. Test records must remain clearly labelled and must not trigger fulfilment.
 
 Execution order after scope approval: provision Test infrastructure and securely provision its Test secret; **FIRST payment check: invoke `operatorAction=razorpay-auth-check` through IAM on deployed Purchase**; investigate any failure in that deployed configuration without regenerating the known matching keys; then apply the approved additive Supabase migration/policy, configure the approved certificate/DNS/webhook, and deploy the branch's KHAGA frontend with the exact API base. Run the guest product → bag → quote → hosted Test payment → verified saved order → protected admin flow, the missed-callback/webhook flow, then redeploy and recheck persistence. Report deployed AWS/Supabase/Razorpay evidence separately from the existing local/mocked results. Live activation needs separate approval after hosted acceptance passes.
+
+
+## Approved deployment attempt: access blockers
+
+The owner approved the proposed Test scope and instructed execution. No further scope approval is required for that Test setup. Deployment preflight in `ap-south-1`, using the selected `sairn-deployer` profile, verified account `521199095818` again but received the following AWS authorization failures:
+
+| Read-only operation | Result |
+| --- | --- |
+| `sts:GetCallerIdentity` | Success: IAM user `sairn-deployer`; authentication is valid |
+| `cloudformation:DescribeStacks` for `khaga-commerce-test` | AccessDenied: no identity-based policy allows the action |
+| `secretsmanager:DescribeSecret` for `khaga/test/commerce` | AccessDenied: no identity-based policy allows the action |
+| `acm:ListCertificates` | AccessDenied: no identity-based policy allows the action |
+| `route53:ListHostedZonesByName` | AccessDenied: no identity-based policy allows the action |
+
+These denials do not establish whether a KHAGA stack or secret already exists. An expired login is not the issue; do not rotate credentials or repeat login as a remedy. The deployment cannot safely proceed until an account administrator supplies a deployment-capable role/profile or grants appropriately scoped KHAGA Test permissions. No attempt was made to grant privileges to the existing Sairn identity.
+
+Administrator access request (account `521199095818`, region `ap-south-1`, Test only):
+
+- CloudFormation inspect/create/update/change-set execution for `khaga-commerce-test` and the SAM artifact bootstrap stack if required.
+- S3 artifact upload/read and bootstrap bucket creation if no approved artifact bucket exists.
+- Lambda creation/update/configuration/permissions and IAM-only invocation for `khaga-purchase-test` and `khaga-confirm-purchase-test`.
+- HTTP API, route, integration, stage, custom domain and API mapping management for the dedicated KHAGA Test API.
+- Creation/pass-role and scoped policy management for the two stack-generated KHAGA Lambda execution roles; CloudWatch log group/retention management for the two Test functions. Prefer an administrator-managed CloudFormation execution role rather than broad changes to the Sairn identity.
+- Secrets Manager metadata/provisioning for `khaga/test/commerce`, and permission for the two Lambda roles to retrieve that exact secret ARN. Do not grant unrelated-secret access.
+- ACM certificate request/describe/tagging for `commerce-test.slavant.com`. Account-level list operations may require resource `*`; resource mutation permissions should stay limited to approved KHAGA resources wherever the AWS service supports it.
+
+Public DNS currently delegates `slavant.com` to `ns1.dns-parking.com` and `ns2.dns-parking.com`; no A or CNAME answer was returned for `commerce-test.slavant.com`. The Test records need access to the existing DNS provider, not a new Route 53 hosted zone. Route 53 access is therefore unnecessary if DNS is managed through the current provider. Only the ACM validation record and Test API hostname record are in scope.
+
+No relevant Razorpay, Supabase or Hostinger variables were present in the deployment process environment, and no private `.env` file existed in the KHAGA workspace. No credential files or secret values were printed. Supply only an approved secret ARN or local secure-file reference for the already-validated Test pair and existing Supabase configuration. Business policy values still need explicit Test settings; a general deployment approval does not invent shipping, tax, retail price or capacity values.
+
+Local SAM validation/build completed; AWS resource creation, production Supabase migration, DNS changes, Hostinger update and payment checks have not begun. The next step remains permission/secure-input resolution, followed by provisioning. The first payment check remains the deployed Purchase Lambda IAM-only authentication check; no local Razorpay request was made during this attempt. Hosted acceptance remains pending and must be reported separately from local fixture results.

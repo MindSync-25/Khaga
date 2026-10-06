@@ -131,3 +131,22 @@ Cross-check against the processed SAM template (15 resources) and current source
 | Runtime roles | Generated inline policy reads only the production secret ARN; basic logging is intersected with the administrator-owned boundary limiting streams/events to two groups. The runtime grants neither resource provisioning nor cross-secret access. Secret retrieval/runtime invocation are not tested during this closed deployment; no payment request is authorised. |
 
 No additional concrete omission was identified for this planned update after the exact v2-tag correction. This is not a guarantee about future template changes, SCPs, policy versions, service behaviour or effective AWS permissions. Fresh change-set creation/execution and actual stack events are the deployment evidence. Preserve both false flags; do not add speculative permissions or treat cancellations as new policy requirements.
+
+### Actual retry outcome: stage tag-on-create denial
+
+The retry of commit `3c76e49b9ffd487101113ab385a04e40ed1b1a23` successfully updated API `1ssp74gnt2` with the corrected v2 tag variants, but the stage's create-with-tags path required a distinct IAM action. On 2026-10-06 at 11:55:52 UTC, CloudFormation reported:
+
+```text
+Principal: arn:aws:sts::521199095818:assumed-role/khaga-prod-cloudformation/AWSCloudFormation
+Action: apigateway:TagResource
+Resource: arn:aws:apigateway:ap-south-1::/apis/1ssp74gnt2/stages
+Error: no identity-based policy allows the apigateway:TagResource action
+Service: ApiGatewayV2; HTTP 403; HandlerErrorCode: AccessDenied
+Request ID: d66f2609-a077-47ef-88e2-032046f13fae
+```
+
+All eight failed events were reviewed: one independent AccessDenied on `CommerceApiApiGatewayDefaultStage`, and seven dependent `Resource creation cancelled` events on the seven Lambda invocation-permission resources. Cancellation is not evidence that AddPermission is missing. No other independent denial was found in this retry.
+
+This is the additional concrete omission discovered by AWS execution: tag-on-create on this API's stage collection. The preceding source lifecycle review did not establish that effective permission; the existing tag endpoint verbs did not cover it. No speculative grants or automatic IAM/source-permission expansion have been made. The administrator must review this exact action/resource before another retry.
+
+Final stack state: `UPDATE_ROLLBACK_COMPLETE`; original API `1ssp74gnt2` preserved. Both production functions were created then automatically removed by rollback; GetFunctionConfiguration returned ResourceNotFound for both. Both approval flags remained false. No secret values, keys, database migration, payment request, DNS/Hostinger change or public activation occurred. PR #5 remains a draft. The next deployment must review a fresh change set on the same stack.

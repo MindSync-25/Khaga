@@ -35,7 +35,7 @@ export function customerInput(value) {
   need(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(result.email), 422, 'INVALID_ADDRESS', 'Check the email address.');
   if (/^[6-9][0-9]{9}$/.test(result.phone)) result.phone = '+91' + result.phone;
   need(/^\+91[6-9][0-9]{9}$/.test(result.phone), 422, 'INVALID_ADDRESS', 'Enter a valid Indian mobile number.');
-  need(/^[1-9][0-9]{5}$/.test(result.postalCode) && result.country === 'IN', 422, 'INVALID_ADDRESS', 'This test checkout supports Indian addresses with a six-digit PIN code.');
+  need(/^[1-9][0-9]{5}$/.test(result.postalCode) && result.country === 'IN', 422, 'INVALID_ADDRESS', 'Checkout supports Indian addresses with a six-digit PIN code.');
   return result;
 }
 export function quoteItems(input, snapshot) {

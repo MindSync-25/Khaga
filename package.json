@@ -11,11 +11,12 @@
     "dev": "node scripts/build-client.mjs && node --watch server.mjs",
     "build": "node scripts/build-client.mjs && node scripts/build.mjs",
     "start": "node server.mjs",
-    "test": "node scripts/build-client.mjs && node --test test/*.test.mjs test/management/*.test.mjs test/checkout/*.test.mjs",
+    "test": "node scripts/build-client.mjs && node --test test/*.test.mjs test/management/*.test.mjs test/checkout/*.test.mjs test/commerce/*.test.mjs",
     "check": "npm test && npm run build",
     "prestart": "node scripts/build-client.mjs",
     "admin:password": "node scripts/admin-password.mjs",
     "admin:seed": "node scripts/seed-catalogue.mjs",
-    "admin:check": "node scripts/admin-check.mjs"
+    "admin:check": "node scripts/admin-check.mjs",
+    "test:commerce:db": "node --test test/commerce/postgres.integration.mjs"
   }
 }

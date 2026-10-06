@@ -1,3 +1,4 @@
+import {commerceFrontend} from './commerce/frontend.mjs';
 import {createServer} from 'node:http';
 import {gzipSync} from 'node:zlib';
 import {readFileSync,readdirSync} from 'node:fs';
@@ -28,7 +29,8 @@ const security={
 const digest=value=>createHash('sha256').update(value).digest();
 const artworkCache=new Map();
 const seedSnapshot={version:'seed',managed:false,preview:true,products,colours,sizes};
-export function createApp({username=process.env.PREVIEW_USERNAME||'',password=process.env.PREVIEW_PASSWORD||'',management=null,commerce=null}={}){
+export function createApp({username=process.env.PREVIEW_USERNAME||'',password=process.env.PREVIEW_PASSWORD||'',management=null,commerce=null,commerceApiBase=process.env.COMMERCE_API_BASE_URL||''}={}){
+ const remoteCommerce=commerceFrontend(commerceApiBase,management);
  if(Boolean(username)!==Boolean(password))throw new Error('Set both PREVIEW_USERNAME and PREVIEW_PASSWORD, or neither.');
  return createServer(async(req,res)=>{
   const head=req.method==='HEAD';
@@ -52,7 +54,8 @@ export function createApp({username=process.env.PREVIEW_USERNAME||'',password=pr
    const url=new URL(req.url||'/','http://localhost');
    let path;try{path=decodeURIComponent(url.pathname);}catch{send(400,'Invalid URL encoding.','text/plain');return;}
    if(path.includes('\0')||path.includes('\\')){send(400,'Invalid path.','text/plain');return;}
-   if(commerce && await commerce.handle(req,res,path))return;
+   if(remoteCommerce && await remoteCommerce.handle(req,res,path))return;
+   if(!remoteCommerce && commerce && await commerce.handle(req,res,path))return;
    if(management && await management.handle(req,res,path))return;
    if(path==='/admin'||path==='/admin/'||path.startsWith('/api/admin/')){
     send(503,JSON.stringify({error:'ADMIN_NOT_CONFIGURED',message:'Admin is disabled until the persistent store and owner credentials are configured.'}),'application/json',{'Cache-Control':'private, no-store'});return;
@@ -66,7 +69,8 @@ export function createApp({username=process.env.PREVIEW_USERNAME||'',password=pr
    const asset=assets.get(path);
    if(asset){if(req.headers['if-none-match']===asset.etag){res.writeHead(304,{...security,'Vary':'Accept-Encoding','X-KHAGA-Version':'0.5.0','ETag':asset.etag,'Cache-Control':username?'private, no-store':'public, max-age=3600'});res.end();return;}send(200,asset.data,asset.type,{'ETag':asset.etag,'Cache-Control':'public, max-age=3600'});return;}
    const snapshot=management?await publishedSnapshot(management.repo):seedSnapshot;
-   if(commerce && await commerce.allowed(req)){snapshot.checkout={mode:'test'};testCheckoutLink=true;}
+   if(remoteCommerce){snapshot.checkout={mode:'commerce'};testCheckoutLink=true;}
+   if(!remoteCommerce && commerce && await commerce.allowed(req)){snapshot.checkout={mode:'test'};testCheckoutLink=true;}
    const context=createCatalog(snapshot),pages=createViews(context);
    if(path==='/api/catalog'){send(200,JSON.stringify(snapshot),'application/json; charset=utf-8',{'Cache-Control':'no-store'});return;}
    const art=path.match(/^\/media\/([a-z0-9-]+)\/([a-z0-9-]+)\/(front|back|detail|model)\.svg$/);

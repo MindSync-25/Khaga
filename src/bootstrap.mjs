@@ -61,7 +61,7 @@ export async function startApplication({env=process.env,port=Number(env.PORT||30
       const management=repo?managementService(repo,config):null;
       const commerce=await initializeCheckout(management,env,log);
       if(closed){try{await repo?.close();}catch{}return {state:'closed'};}
-      handler=createApp({username:env.PREVIEW_USERNAME||'',password:env.PREVIEW_PASSWORD||'',management,commerce});
+      handler=createApp({username:env.PREVIEW_USERNAME||'',password:env.PREVIEW_PASSWORD||'',management,commerce,commerceApiBase:env.COMMERCE_API_BASE_URL||''});
       const result={state:'ready',catalogue:storeConfig.driver,admin:config.enabled?'enabled':'disabled'};
       emit(result.state,{catalogue:result.catalogue,admin:result.admin});
       return result;

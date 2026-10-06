@@ -78,3 +78,10 @@ All real credentials must stay in Hostinger environment configuration. Never com
 See **[docs/VALIDATION_V4.md](docs/VALIDATION_V4.md)** for commands and actual results. Local HTTP/database tests and offline browser tests are separate. Offline browser mocks are not proof of real Supabase grants, native cookie behaviour, Safari, physical phone or Hostinger deployment success.
 
 Before accepting orders: verify real samples/measurements/media, persistent catalogue setup, then implement guest checkout, authoritative totals, payment verification/idempotent webhooks, stored orders and manual fulfilment. Phase 2 is still outstanding. No sales switch exists in this release.
+
+## Guest commerce on AWS
+
+The optional guest checkout uses two native Lambda functions per environment,
+Supabase transactions and separate Razorpay Test/Live configuration. It is off
+until `COMMERCE_API_BASE_URL` points to a verified API subdomain. See
+[deployment, policy settings, recovery and acceptance](docs/commerce-deployment.md).

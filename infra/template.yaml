@@ -1,0 +1,122 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: KHAGA commerce - exactly two native Lambda functions per environment
+Parameters:
+  Environment:
+    Type: String
+    Default: test
+    AllowedValues: [test, live]
+  LiveApproved:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['false', 'true']
+  TestSecretArn:
+    Type: String
+    AllowedPattern: '^arn:aws[a-z-]*:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+$'
+    Description: Secrets Manager ARN for Test configuration (no secret values)
+  LiveSecretArn:
+    Type: String
+    Default: 'arn:aws:secretsmanager:us-east-1:000000000000:secret:LIVE-NOT-CONFIGURED'
+    AllowedPattern: '^arn:aws[a-z-]*:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+$'
+    Description: Separate Live secret ARN, required only for approved Live stack
+  FrontendOrigins:
+    Type: CommaDelimitedList
+    AllowedPattern: '^https://[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::[0-9]{1,5})?$'
+    Description: Exact HTTPS storefront origins, no wildcard or trailing slash
+Conditions:
+  IsLive: !Equals [!Ref Environment, live]
+Rules:
+  ApproveLive:
+    RuleCondition: !Equals [!Ref Environment, live]
+    Assertions:
+      - Assert: !Equals [!Ref LiveApproved, 'true']
+        AssertDescription: Live must be explicitly approved
+      - Assert: !Not [!Equals [!Ref LiveSecretArn, 'arn:aws:secretsmanager:us-east-1:000000000000:secret:LIVE-NOT-CONFIGURED']]
+        AssertDescription: Live needs its own secret
+      - Assert: !Not [!Equals [!Ref LiveSecretArn, !Ref TestSecretArn]]
+        AssertDescription: Test and Live secret references must differ
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    Architectures: [arm64]
+    Timeout: 60
+    MemorySize: 256
+    CodeUri: ../dist/commerce/
+    Environment:
+      Variables:
+        COMMERCE_MODE: !Ref Environment
+        LIVE_APPROVED: !Ref LiveApproved
+        COMMERCE_SECRET_ARN: !If [IsLive, !Ref LiveSecretArn, !Ref TestSecretArn]
+        FRONTEND_ORIGINS: !Join [',', !Ref FrontendOrigins]
+Resources:
+  CommerceApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: '$default'
+      CorsConfiguration:
+        AllowOrigins: !Ref FrontendOrigins
+        AllowCredentials: true
+        AllowHeaders: [content-type, x-csrf-token]
+        AllowMethods: [GET, POST, OPTIONS]
+        MaxAge: 300
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 20
+        ThrottlingRateLimit: 10
+  Purchase:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub khaga-purchase-${Environment}
+      Handler: src/commerce/purchase.handler
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: !If [IsLive, !Ref LiveSecretArn, !Ref TestSecretArn]
+      Events:
+        Session:
+          Type: HttpApi
+          Properties: {ApiId: !Ref CommerceApi, Path: /checkout/session, Method: POST, PayloadFormatVersion: '2.0'}
+        Quote:
+          Type: HttpApi
+          Properties: {ApiId: !Ref CommerceApi, Path: /checkout/quote, Method: POST, PayloadFormatVersion: '2.0'}
+        Purchase:
+          Type: HttpApi
+          Properties: {ApiId: !Ref CommerceApi, Path: /purchase, Method: POST, PayloadFormatVersion: '2.0'}
+  ConfirmPurchase:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub khaga-confirm-purchase-${Environment}
+      Handler: src/commerce/confirm-purchase.handler
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: !If [IsLive, !Ref LiveSecretArn, !Ref TestSecretArn]
+      Events:
+        Confirm:
+          Type: HttpApi
+          Properties: {ApiId: !Ref CommerceApi, Path: /confirm-purchase, Method: POST, PayloadFormatVersion: '2.0'}
+        Webhook:
+          Type: HttpApi
+          Properties: {ApiId: !Ref CommerceApi, Path: /payments/razorpay/webhook, Method: POST, PayloadFormatVersion: '2.0'}
+        Order:
+          Type: HttpApi
+          Properties: {ApiId: !Ref CommerceApi, Path: '/orders/{id}', Method: GET, PayloadFormatVersion: '2.0'}
+        Reconcile:
+          Type: HttpApi
+          Properties: {ApiId: !Ref CommerceApi, Path: '/orders/{id}/reconcile', Method: POST, PayloadFormatVersion: '2.0'}
+  PurchaseLogs:
+    Type: AWS::Logs::LogGroup
+    Properties: {LogGroupName: !Sub '/aws/lambda/khaga-purchase-${Environment}', RetentionInDays: 14}
+  ConfirmLogs:
+    Type: AWS::Logs::LogGroup
+    Properties: {LogGroupName: !Sub '/aws/lambda/khaga-confirm-purchase-${Environment}', RetentionInDays: 14}
+Outputs:
+  ApiUrl:
+    Value: !Sub https://${CommerceApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}
+  PurchaseFunction:
+    Value: !Ref Purchase
+  ConfirmFunction:
+    Value: !Ref ConfirmPurchase
+  WebhookUrl:
+    Value: !Sub https://${CommerceApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/payments/razorpay/webhook

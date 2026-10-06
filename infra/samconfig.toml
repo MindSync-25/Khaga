@@ -1,0 +1,17 @@
+version = 0.1
+[test.build.parameters]
+template_file = "template.yaml"
+[test.deploy.parameters]
+stack_name = "khaga-commerce-test"
+resolve_s3 = true
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = true
+fail_on_empty_changeset = false
+[live.build.parameters]
+template_file = "template.yaml"
+[live.deploy.parameters]
+stack_name = "khaga-commerce-live"
+resolve_s3 = true
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = true
+fail_on_empty_changeset = false

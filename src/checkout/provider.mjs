@@ -35,7 +35,7 @@ export class RazorpayProvider {
     return result;
   }
   async create(order) {
-    const result=await this.request('/orders',{amount:order.body.quote.total,currency:'INR',receipt:order.id,partial_payment:false,notes:{khaga_order_id:order.id,khaga_mode:'test'}});
+    const result=await this.request('/orders',{amount:order.body.quote.total,currency:'INR',receipt:order.id,partial_payment:false,notes:{khaga_order_id:order.id,khaga_mode:this.config.mode || 'test'}});
     if(!matchesOrder(result,order))throw new GatewayError('PAYMENT_RESPONSE_INVALID');
     return result.id;
   }
@@ -50,7 +50,7 @@ export class RazorpayProvider {
     if(!matches.length)return null;
     if(matches.length!==1)throw new GatewayError('PAYMENT_RECOVERY_CONFLICT');
     const candidate=matches[0];
-    if(!matchesOrder(candidate,order)||candidate.entity!=='order'||candidate.notes?.khaga_order_id!==order.id||candidate.notes?.khaga_mode!=='test'||!['created','attempted','paid'].includes(candidate.status))throw new GatewayError('PAYMENT_RECOVERY_CONFLICT');
+    if(!matchesOrder(candidate,order)||candidate.entity!=='order'||candidate.notes?.khaga_order_id!==order.id||candidate.notes?.khaga_mode!==(this.config.mode || 'test')||!['created','attempted','paid'].includes(candidate.status))throw new GatewayError('PAYMENT_RECOVERY_CONFLICT');
     return candidate;
   }
   async order(order) {

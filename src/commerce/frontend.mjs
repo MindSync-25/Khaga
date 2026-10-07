@@ -28,7 +28,7 @@ export function commerceFrontend(base,management){
    .replace('Review your selection and try the complete payment flow. Use test contact and address details.','Review your selection, delivery details and total before payment.')
    .replace('India — test checkout','India').replace('This private test saves','Checkout saves')
    .replace('02 / SECURE TEST PAYMENT','02 / SECURE PAYMENT').replace('Pay in test mode →','Continue to payment →')
-   .replace('Prices, taxes and free shipping here are for simulation only. No stock is reserved or dispatched.','The server confirms pricing and availability before payment.')
+   .replace('Prices, taxes and free shipping here are for simulation only. No stock is reserved or dispatched.','Free shipping to eligible delivery addresses. The server confirms pricing and availability before payment.')
    .replace('This test checkout requires','Checkout requires').replace('KHAGA · Test transactions only. Do not enter real card details or customer addresses.','KHAGA · Payment details are handled securely by Razorpay.');
   reply(200,html);return true;
  }};

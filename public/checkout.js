@@ -24,7 +24,7 @@
   }
   const response=await fetch(commerceBase+path,{method,credentials:remote?'include':'same-origin',cache:'no-store',signal:AbortSignal.timeout(25000),headers:{Accept:'application/json',...(data?{'Content-Type':'application/json'}:{}),...(method==='POST'?{'X-CSRF-Token':session?.csrf||''}:{})},body:data?JSON.stringify(data):undefined});
   let result;try{result=await response.json();}catch{throw Error('Checkout could not respond. Your bag is unchanged.');}
-  if(!response.ok)throw Object.assign(new Error((result.message||'Checkout did not complete.')+(result.reference?' Reference: '+result.reference:'')),{code:result.error});return result;
+  if(!response.ok)throw Object.assign(new Error((result.message||'Checkout did not complete.')+(result.reference&&result.error!=='DELIVERY_UNSUPPORTED'?' Reference: '+result.reference:'')),{code:result.error});return result;
  }
  function summary(q){$('#checkout-summary').innerHTML=q.items.map(l=>`<div class="order-line"><div><strong>${esc(l.name)}</strong><p>${esc(l.colourName)} · ${esc(l.size)} · Qty ${l.quantity}${l.availability==='preorder'?` · Preorder (dispatch ${esc(l.dispatchMin)}–${esc(l.dispatchMax)} days)`:''}</p></div><span>${money(l.unitPrice*l.quantity)}</span></div>`).join('')+`<div class="totals"><span>Subtotal</span><span>${money(q.subtotal)}</span></div><div class="totals"><span>Shipping</span><span>${money(q.shipping)}</span></div>${q.tax!==undefined?`<div class="totals"><span>Tax${q.taxTreatment==='inclusive'?' (included)':''}</span><span>${money(q.tax)}</span></div>`:''}<div class="totals grand-total"><strong>Total${q.mode==='test'?' (test)':''}</strong><strong>${money(q.total)}</strong></div><p class="privacy-note">${esc(q.taxNote)}</p>`;}
  function loadSDK(){
@@ -52,7 +52,9 @@
  }
  async function refresh(){if(!checkout)return;const result=await api('/api/checkout/orders/'+checkout.order.id+'/reconcile',{method:'POST',data:{}});showOrder(result);}
  async function openPayment(){
-  if(busy||verifying)return;error('');lock(true);
+  if(busy||verifying)return;
+  if(!checkout&&(!quote||!body)){error('Review your delivery details and total before payment.');return;}
+  error('');lock(true);
   try{
    await loadSDK();
    if(checkout?.payment)checkout=await api('/api/checkout/orders/'+checkout.order.id+'/reconcile',{method:'POST',data:{}});
@@ -67,13 +69,16 @@
    }});
    paymentWindow.on('payment.failed',()=>error('This payment attempt failed. You can retry inside Razorpay or close it. Your saved order and bag are retained.'));
    paymentWindow.open();
-  }catch(e){lock(false);error(e.message);if(e.code==='QUOTE_CHANGED'){checkout=null;quote=null;$('#checkout-form').hidden=false;$('#payment-step').hidden=true;}}
+  }catch(e){lock(false);error(e.message);if(['QUOTE_CHANGED','INVALID_ADDRESS','DELIVERY_UNSUPPORTED','DELIVERY_LOOKUP_UNAVAILABLE','DELIVERY_POLICY_REQUIRED'].includes(e.code)&&!checkout){invalidateQuote();}}
  }
  $('#checkout-form').addEventListener('submit',async event=>{
   event.preventDefault();if(busy)return;error('');lock(true);
   try{
+   quote=null;const revision=addressRevision;
    body={customer:Object.fromEntries(new FormData(event.target))};
-   quote=await api('/api/checkout/quote',{method:'POST',data:{items:bag}});summary(quote);
+   const reviewed=await api('/api/checkout/quote',{method:'POST',data:{items:bag,...(remote?body:{})}});
+   if(revision!==addressRevision)return;
+   quote=reviewed;summary(quote);
    $('#checkout-form').hidden=true;$('#payment-step').hidden=false;$('#order-result').hidden=true;
    $('#payment-note').textContent=`Confirm ${quote.mode==='test'?'a test payment':'payment'} of ${money(quote.total)} for ${body.customer.name}.${quote.mode==='test'?' This is not a live purchase.':''}`;
    // Loading the SDK does not create an order or charge a payment.
@@ -81,7 +86,15 @@
   }catch(e){error(e.message);}finally{lock(false);}
  });
  $('#pay-button').addEventListener('click',openPayment);
- $('#edit-button').addEventListener('click',()=>{if(busy||checkout)return;$('#checkout-form').hidden=false;$('#payment-step').hidden=true;});
+ let addressRevision=0;
+ function invalidateQuote(){
+  addressRevision++;quote=null;body=null;
+  $('#checkout-form').hidden=false;$('#payment-step').hidden=true;
+  $('#checkout-summary').textContent='Review your delivery details to confirm eligibility and total.';
+ }
+ $('#checkout-form').addEventListener('input',()=>{if(!checkout)invalidateQuote();});
+ $('#checkout-form').addEventListener('change',()=>{if(!checkout)invalidateQuote();});
+ $('#edit-button').addEventListener('click',()=>{if(busy||checkout)return;invalidateQuote();});
  document.addEventListener('click',async event=>{
   if(event.target.closest('[data-new-checkout]')){attempt={key:random()};remember();location.assign('/checkout');return;}
   if(event.target.closest('[data-resume-payment]'))return openPayment();
@@ -97,7 +110,9 @@
    if(id){try{showOrder(await api('/api/checkout/orders/'+id));if(remote)await refresh();return;}catch(e){if(e.code!=='ORDER_NOT_FOUND')throw e;attempt={key:random()};remember();}}
    if(session.recent.length)$('#recent-orders').innerHTML=`<p class="hint">Recent order: <a href="/checkout/orders/${esc(session.recent[0].id)}">${esc(session.recent[0].reference)} — ${esc(session.recent[0].status)}</a></p>`;
    if(!bag.length){$('#checkout-summary').innerHTML='<p>Your bag is empty. <a href="/collection">Explore the collection</a>.</p>';return;}
-   quote=await api('/api/checkout/quote',{method:'POST',data:{items:bag}});summary(quote);$('#address-fields').disabled=false;
+   if(remote)$('#checkout-summary').textContent='Enter your delivery details to confirm eligibility and total.';
+   else {quote=await api('/api/checkout/quote',{method:'POST',data:{items:bag}});summary(quote);}
+   $('#address-fields').disabled=false;
   }catch(e){error(e.message);$('#checkout-summary').textContent='Checkout is unavailable. Your bag has not been removed.';}
  }
  document.addEventListener('visibilitychange',()=>{if(remote&&document.visibilityState==='visible'&&checkout&&!verifying)refresh().then(()=>lock(false)).catch(e=>{showOrder(checkout);lock(false);error(e.message);});});

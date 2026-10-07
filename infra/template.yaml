@@ -1,0 +1,128 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: KHAGA single production stack - two native Lambda functions; purchases disabled during setup
+Parameters:
+  Environment:
+    Type: String
+    Default: prod
+    AllowedValues: [prod]
+    Description: Infrastructure label only; payment mode is independent
+  PaymentMode:
+    Type: String
+    Default: live
+    AllowedValues: [live]
+  LiveApiApproved:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['false', 'true']
+    Description: Owner authorisation to access Razorpay Live APIs, not approval to charge
+  PurchasesEnabled:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['false', 'true']
+    Description: Enable new customer purchases only after separate activation approval
+  CommerceSecretArn:
+    Type: String
+    AllowedPattern: '^arn:aws:secretsmanager:ap-south-1:521199095818:secret:khaga/prod/commerce-[A-Za-z0-9]{6}$'
+    Description: Exact production Secrets Manager ARN; no secret values
+  FrontendOrigins:
+    Type: CommaDelimitedList
+    Default: https://khaga.slavant.com
+    AllowedValues: ['https://khaga.slavant.com']
+    Description: Existing KHAGA storefront only
+Rules:
+  PurchaseApprovalRequiresApiApproval:
+    RuleCondition: !Equals [!Ref PurchasesEnabled, 'true']
+    Assertions:
+      - Assert: !Equals [!Ref LiveApiApproved, 'true']
+        AssertDescription: New purchases require prior Live API approval
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    Architectures: [arm64]
+    Timeout: 60
+    MemorySize: 256
+    CodeUri: ../dist/commerce/
+    Environment:
+      Variables:
+        COMMERCE_ENVIRONMENT: !Ref Environment
+        COMMERCE_MODE: !Ref PaymentMode
+        LIVE_API_APPROVED: !Ref LiveApiApproved
+        PURCHASES_ENABLED: !Ref PurchasesEnabled
+        COMMERCE_SECRET_ARN: !Ref CommerceSecretArn
+        FRONTEND_ORIGINS: !Join [',', !Ref FrontendOrigins]
+Resources:
+  CommerceApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      Name: !Sub khaga-commerce-${Environment}
+      StageName: '$default'
+      CorsConfiguration:
+        AllowOrigins: !Ref FrontendOrigins
+        AllowCredentials: true
+        AllowHeaders: [content-type, x-csrf-token]
+        AllowMethods: [GET, POST, OPTIONS]
+        MaxAge: 300
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 20
+        ThrottlingRateLimit: 10
+  Purchase:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub khaga-purchase-${Environment}
+      PermissionsBoundary: 'arn:aws:iam::521199095818:policy/khaga-prod-runtime-boundary'
+      Handler: src/commerce/purchase.handler
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: !Ref CommerceSecretArn
+      Events:
+        Session:
+          Type: HttpApi
+          Properties: {ApiId: !Ref CommerceApi, Path: /checkout/session, Method: POST, PayloadFormatVersion: '2.0'}
+        Quote:
+          Type: HttpApi
+          Properties: {ApiId: !Ref CommerceApi, Path: /checkout/quote, Method: POST, PayloadFormatVersion: '2.0'}
+        Purchase:
+          Type: HttpApi
+          Properties: {ApiId: !Ref CommerceApi, Path: /purchase, Method: POST, PayloadFormatVersion: '2.0'}
+  ConfirmPurchase:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub khaga-confirm-purchase-${Environment}
+      PermissionsBoundary: 'arn:aws:iam::521199095818:policy/khaga-prod-runtime-boundary'
+      Handler: src/commerce/confirm-purchase.handler
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: !Ref CommerceSecretArn
+      Events:
+        Confirm:
+          Type: HttpApi
+          Properties: {ApiId: !Ref CommerceApi, Path: /confirm-purchase, Method: POST, PayloadFormatVersion: '2.0'}
+        Webhook:
+          Type: HttpApi
+          Properties: {ApiId: !Ref CommerceApi, Path: /payments/razorpay/webhook, Method: POST, PayloadFormatVersion: '2.0'}
+        Order:
+          Type: HttpApi
+          Properties: {ApiId: !Ref CommerceApi, Path: '/orders/{id}', Method: GET, PayloadFormatVersion: '2.0'}
+        Reconcile:
+          Type: HttpApi
+          Properties: {ApiId: !Ref CommerceApi, Path: '/orders/{id}/reconcile', Method: POST, PayloadFormatVersion: '2.0'}
+  PurchaseLogs:
+    Type: AWS::Logs::LogGroup
+    Properties: {LogGroupName: !Sub '/aws/lambda/khaga-purchase-${Environment}', RetentionInDays: 14}
+  ConfirmLogs:
+    Type: AWS::Logs::LogGroup
+    Properties: {LogGroupName: !Sub '/aws/lambda/khaga-confirm-purchase-${Environment}', RetentionInDays: 14}
+Outputs:
+  ApiUrl:
+    Value: !Sub https://${CommerceApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}
+  PurchaseFunction:
+    Value: !Ref Purchase
+  ConfirmFunction:
+    Value: !Ref ConfirmPurchase
+  WebhookUrl:
+    Value: !Sub https://${CommerceApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/payments/razorpay/webhook

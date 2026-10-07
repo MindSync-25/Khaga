@@ -1,10 +1,9 @@
 'use strict';
-// Served into public templates ONLY for the authenticated owner when Test mode
-// is configured. Server-side authentication remains mandatory on all test APIs.
+// Enabled by the server for configured guest commerce, or legacy owner tests.
 (()=>{
  function update(){
   document.querySelectorAll('.checkout-disabled').forEach(button=>{
-   const link=document.createElement('a');link.href='/checkout';link.className='button';link.dataset.testCheckout='';link.textContent='Continue to test checkout →';button.replaceWith(link);
+   const link=document.createElement('a');link.href='/checkout';link.className='button';link.dataset.testCheckout='';link.textContent='Continue to checkout →';button.replaceWith(link);
   });
  }
  // The isolated payment document has its own CSP/SDK. Existing colour, gallery,

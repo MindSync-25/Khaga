@@ -9,8 +9,8 @@ export function createCatalog(snapshot) {
   const result=products.filter(p=>(category==='all'||p.category===category)&&(!query||[p.name,p.note,...p.colours.map(c=>colours[c]?.name||c)].join(' ').toLowerCase().includes(query)));
   if(sort==='price-asc')result.sort((a,b)=>a.price-b.price);if(sort==='price-desc')result.sort((a,b)=>b.price-a.price);return result;
  };
- const catalog={version:snapshot.version||'seed',managed:!!snapshot.managed,preview:true,products,colours,sizes,byId,money,variant,filterProducts};
+ const catalog={version:snapshot.version||'seed',managed:!!snapshot.managed,preview:true,checkout:snapshot.checkout||null,products,colours,sizes,byId,money,variant,filterProducts};
  catalog.replace=next=>{products.splice(0,products.length,...structuredClone(next.products));for(const c of Object.keys(colours))delete colours[c];Object.assign(colours,structuredClone(next.colours));sizes.splice(0,sizes.length,...next.sizes);byId.clear();for(const p of products)byId.set(p.id,p);catalog.version=next.version;catalog.managed=!!next.managed;};
- catalog.snapshot=()=>({version:catalog.version,managed:catalog.managed,preview:true,products,colours,sizes});
+ catalog.snapshot=()=>({version:catalog.version,managed:catalog.managed,preview:true,...(catalog.checkout?{checkout:catalog.checkout}:{}),products,colours,sizes});
  return catalog;
 }

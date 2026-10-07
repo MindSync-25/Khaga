@@ -1,0 +1,13 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Administrator-only empty KHAGA production API; update this same stack with infra/template.yaml
+Resources:
+  CommerceApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Body:
+        openapi: 3.0.1
+        info: {title: khaga-commerce-prod, version: "1.0"}
+        paths: {}
+Outputs:
+  ProdApiId:
+    Value: !Ref CommerceApi

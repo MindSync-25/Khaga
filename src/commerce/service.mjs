@@ -11,7 +11,7 @@ export function commerceService({repo,store,provider,config,pinLookup=lookupPin}
   const policy=await store.policy();
   // Keep the existing database's independent total calculation consistent. Never
   // substitute a made-up policy or silently overwrite shipping/tax settings.
-  need(policy?.shippingPaise===0,503,'DELIVERY_POLICY_REQUIRED','Free shipping settings await confirmation. Your bag is unchanged.');
+  need(policy?.shippingPaise===0&&policy.freeShippingAt===null,503,'DELIVERY_POLICY_REQUIRED','Delivery settings are unavailable. Please try again later. Your bag is unchanged.');
   const q=price(items,await publishedSnapshot(repo),policy,config.mode);
   return {...q,hash:sha(q.hash+':'+deliveryHash(customer))};
  };

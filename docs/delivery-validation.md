@@ -25,22 +25,32 @@ Existing-order confirmation, signed webhooks and recovery do not use this gate. 
 - Endpoint: `GET https://api.pincodeapi.in/api/v1/pincode/{PIN}`; only the PIN is sent. No name, contact details, street address, key or customer identifier leaves KHAGA for this lookup.
 - [Data provenance and limitations](https://pincodeapi.in/data/): independent directory prepared from India Post, Open Government Data and other public government sources. It is not an official government service. Postal records verify the PIN/state association, not the physical existence of a building or a courier's service promise. District is not treated as city.
 - [Response contract](https://pincodeapi.in/docs/responses/) and [error codes](https://pincodeapi.in/docs/errors/): require a successful V1 response, matching PIN in the envelope and every record, a complete count and one unambiguous state across all records. A specific `404 PINCODE_NOT_FOUND` is an invalid address; generic 404s are lookup failures.
-- HTTPS validation remains enabled; redirects are rejected. Each lookup has a five-second timeout. There is no automatic retry loop or stale-success fallback. Each quote/create validates afresh, so an outage between review and creation fails closed.
+- HTTPS validation remains enabled; redirects are rejected. Each lookup has a five-second timeout. There is no automatic retry loop or stale-success fallback. Each quote/create revalidates the submitted address and quote binding; a fresh cached PIN/state result can satisfy the lookup. Expired results are never used on failure.
 - [Provider terms](https://pincodeapi.in/api-terms/) permit commercial use, with a documented public limit of six calls per ten seconds per IP and no SLA. Rate limits produce the retryable checkout error. Capacity/availability must be considered before sales activation; no new paid service or credential is configured here.
 - A public, non-customer lookup of `560001` on 2026-10-07 matched the documented contract and Karnataka; the response reported dataset version `2026-06-27`, release `20260627-0d584ba5d757`. Automated tests use deterministic fixtures and do not depend on this external service.
 
-## Free shipping and remaining production prerequisite
+## Approved shipping and missing Live policy
 
-The existing database independently recomputes shipping and tax from `commerce_policy`. The service therefore requires `shippingPaise: 0` in the existing approved policy before returning any new quote. Missing/nonzero shipping fails closed as `DELIVERY_POLICY_REQUIRED`; no paid shipping quote is offered. Tax calculations, product prices, stock and sample approvals are unchanged. A missing or unapproved complete policy still blocks checkout; this PR never fabricates one.
+The owner approved `shippingPaise: 0` and `freeShippingAt: null`; no reconfirmation is needed. The owner's last SQL query found **no Live commerce_policy row**. A complete approved existing Live policy has therefore not been confirmed and must not be implied. No policy is created by this release.
 
-The production policy is not available through current authorised public access, so its shipping value remains unverified. Before a separately approved activation, the owner must confirm that the existing Live policy has zero shipping and otherwise approved business/tax settings. This PR performs no production policy write or migration. Local fixtures alone use zero shipping for the approved delivery-rule tests; their tax values are explicitly simulated, not production policy or a GST-exemption claim.
+The existing database independently recomputes shipping and tax. The service requires those approved shipping values before issuing a payable quote; missing or conflicting settings fail closed with `DELIVERY_POLICY_REQUIRED`. Prices, availability, stock and sample approvals remain unchanged.
+
+The owner states KHAGA is currently **not GST-registered**. This is not a statement that garments are GST-exempt. Remaining policy fields are `taxBps`, `taxTreatment` (inclusive/exclusive), `taxShipping`, truthful `taxNote`, and policy `version`/`enabled` state. These must be settled before an explicitly authorised policy creation and later sales activation; no fixture tax settings may be copied into production. Approved delivery/returns/cancellation/refund/support promises and product readiness remain separate launch inputs. Purchases remain disabled throughout this release.
+
+## Bounded caching and provider limits
+
+A warm Lambda instance shares at most **128 validated PIN/state results**, each with an absolute **five-minute TTL** from successful validation. Hits refresh eviction order, not the expiry time. Expired results are removed before use; eviction removes the least recently used result. No customer address, quote, eligibility decision, unknown PIN or error is cached as success. Every submitted address is validated again, including country, state/PIN consistency and the full delivery-address quote binding.
+
+Concurrent requests for the same uncached PIN share one in-flight request. Each instance permits at most six outbound starts per ten seconds and six simultaneous outbound requests; excess requests fail with the existing retryable lookup error instead of queuing unbounded work. HTTP 429 respects `Retry-After` (at least ten seconds), without retries or alternate routes around the provider limit. A subsequent valid fresh cache hit is still usable; expired entries never become fallback success.
+
+**Per-instance caching and throttling do not guarantee aggregate throughput across Lambda instances or shared egress IPs.** The provider remains authoritative for its rate limit. Cold starts, distinct PINs and multiple instances can still encounter 429/outages, reported as retryable verification failures. No distributed store, new Lambda, paid provider or IAM change is introduced.
 
 ## Local verification
 
-- `npm run check`: **233 tests passed**, plus the complete storefront build.
+- `npm run check`: **240 tests passed**, plus the complete storefront build.
 - `npm run test:commerce:db`: **11 integration tests passed** against disposable PostgreSQL, with actual order/reservation counts unchanged after unsupported, foreign, mismatched, unknown-PIN, lookup-outage and stale-address requests. Existing payment, idempotency, persistence and signed-webhook tests use simulated providers.
 - `test/commerce/browser-qa.py`: **15 checks passed** in Chromium against the existing local HTTPS harness. Verifies exact unsupported text, correction/outage messages, entered-details/bag retention, no SDK/payment opening on rejected delivery, edited-address review, normal bag controls, guest cookies/CORS, protected admin and existing payment/recovery regressions. Self-signed TLS is limited to this existing local harness; it is not hosted TLS evidence.
 
-`node scripts/build-commerce.mjs` also passed, packaging the new module in the existing source-only Lambda artifact. `git diff --check` passed.
+`node scripts/build-commerce.mjs` and `sam build --template-file infra/template.yaml` also passed, packaging the new module in the existing source-only Lambda artifact. `git diff --check` passed.
 
 No hosted checkout/payment acceptance or deployment is claimed by these tests.

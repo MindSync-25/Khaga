@@ -22,7 +22,7 @@ export async function seedProduct(id,capacity=3){
  await sql(`INSERT INTO khaga_private.documents VALUES('product',${literal(id)},1,${literal(JSON.stringify({published:p,draft:p}))},0) ON CONFLICT(kind,id) DO UPDATE SET body=excluded.body;`);
  return p;
 }
-export const deliveryPolicy={...policy,shippingPaise:0};
+export const deliveryPolicy={...policy,shippingPaise:0,freeShippingAt:null};
 export const fixturePinLookup=async pin=>{
  if(pin==='560002')throw Error('Fixture lookup outage');
  if(pin==='999999')throw new HttpError(422,'INVALID_ADDRESS','We couldn’t find that PIN code. Please check your delivery address.');

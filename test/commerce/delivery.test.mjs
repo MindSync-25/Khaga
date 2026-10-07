@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHmac} from 'node:crypto';
-import {deliveryCustomer,lookupPin,unsupportedDelivery} from '../../src/commerce/delivery.mjs';
+import {deliveryCustomer,fetchPin as lookupPin,unsupportedDelivery} from '../../src/commerce/delivery.mjs';
 import {commerceService} from '../../src/commerce/service.mjs';
 import {handlerFor} from '../../src/commerce/http.mjs';
 import {sha} from '../../src/checkout/core.mjs';

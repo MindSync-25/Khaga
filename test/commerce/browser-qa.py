@@ -26,17 +26,45 @@ with sync_playwright() as p:
  assert guest['secure'] and guest['httpOnly'] and guest['domain']=='api.khaga.test' and guest['sameSite']=='Lax'
  assert '__Host-khaga_guest_test' not in page.evaluate('document.cookie');passed('Host-only secure HttpOnly cookie stored on API host')
  assert page.request.get('https://127.0.0.1:55440/api/admin/orders').status==401;passed('All-order admin view remains protected')
- values={'name':'Fixture Buyer','email':'fixture@example.invalid','phone':'9876543210','line1':'123 Fixture Road','city':'Mumbai','state':'Maharashtra','postalCode':'400001'}
+ values={'name':'Fixture Buyer','email':'fixture@example.invalid','phone':'9876543210','line1':'123 Fixture Road','city':'Bengaluru','state':'Karnataka','postalCode':'560001'}
  for k,v in values.items():page.locator('[name="'+k+'"]').fill(v)
+ # Delivery failures use the real local handler. Only the public lookup is a fixture.
+ bag_before=page.evaluate("localStorage.getItem('khaga.preview.bag.v1')")
+ for state,pin,message in [('Maharashtra','400001','We’re currently unable to deliver to this address.\nPlease choose another delivery address.'),('Karnataka','400001','The state and PIN code don’t match.'),('Karnataka','999999','We couldn’t find that PIN code.'),('Karnataka','560002','We couldn’t verify your delivery address right now.')]:
+  page.locator('[name="state"]').fill(state);page.locator('[name="postalCode"]').fill(pin)
+  page.locator('#checkout-form button').click()
+  page.wait_for_function("message => document.querySelector('#checkout-error').textContent.includes(message)",arg=message)
+  if state=='Maharashtra':assert page.locator('#checkout-error').inner_text()==message
+  assert page.locator('[name="postalCode"]').input_value()==pin
+  assert page.locator('[name="line1"]').input_value()==values['line1']
+  assert page.evaluate("localStorage.getItem('khaga.preview.bag.v1')")==bag_before
+  assert not page.locator('#payment-step').is_visible()
+  assert not page.evaluate('Boolean(window.fixtureOpened || window.Razorpay)')
+  assert page.request.get('https://127.0.0.1:55441/__fixture/stats').json()['creates']==baseline
+ passed('Unsupported/mismatched/unknown/outage delivery preserves bag and details; no order or SDK/payment window')
+ page.locator('[name="state"]').fill('Karnataka');page.locator('[name="postalCode"]').fill('560001')
+ with page.expect_response(lambda r:r.url==API+'/checkout/quote'):
+  page.evaluate("""() => {document.querySelector('#checkout-form').requestSubmit();const line=document.querySelector('[name=line1]');line.value='321 Edited During Review';line.dispatchEvent(new Event('input',{bubbles:true}));}""")
+ page.wait_for_function("() => !document.querySelector('#pay-button').disabled")
+ assert not page.locator('#payment-step').is_visible()
+ assert page.locator('[name="line1"]').input_value()=='321 Edited During Review'
+ passed('Late quote response cannot restore payment after an address edit')
  page.locator('#checkout-form button').click();page.wait_for_selector('#payment-step',state='visible')
- assert '₹1,100.00' in page.locator('#checkout-summary').inner_text()
+ assert '₹1,000.00' in page.locator('#checkout-summary').inner_text()
  assert page.request.get('https://127.0.0.1:55441/__fixture/stats').json()['creates']==baseline;passed('Reviewed server total precedes order creation and payment')
+ page.locator('#edit-button').click()
+ assert not page.locator('#payment-step').is_visible()
+ assert '₹1,000.00' not in page.locator('#checkout-summary').inner_text()
+ page.locator('[name="line1"]').fill('456 Changed Fixture Road')
+ assert page.evaluate("localStorage.getItem('khaga.preview.bag.v1')")==bag_before
+ page.locator('#checkout-form button').click();page.wait_for_selector('#payment-step',state='visible')
+ passed('Editing delivery invalidates reviewed total and requires a fresh quote without clearing bag')
  # Real credentialed fetch; browser sends preflight and cookie. No fetch mocks.
  csrf=page.evaluate("async()=> (await (await fetch('"+API+"/checkout/session',{method:'POST',credentials:'include'})).json()).csrf")
  rejected=page.evaluate("async()=> (await fetch('"+API+"/checkout/quote',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:'{}'})).status")
  assert rejected==403;passed('Actual cross-origin POST rejects missing CSRF')
  page.locator('#pay-button').click();page.wait_for_function('() => window.fixtureOpened===true')
- options=page.evaluate('({orderId:fixtureOptions.order_id,amount:fixtureOptions.amount})');assert options['amount']==110000
+ options=page.evaluate('({orderId:fixtureOptions.order_id,amount:fixtureOptions.amount})');assert options['amount']==100000
  page.evaluate('fixtureOptions.modal.ondismiss()');page.wait_for_selector('[data-check-status]')
  assert len(page.evaluate("JSON.parse(localStorage.getItem('khaga.preview.bag.v1')).items"))==1;passed('Cancellation preserves bag and saved order')
  page.reload();page.wait_for_selector('[data-resume-payment]');passed('Refresh recovers pending order with same guest cookie')

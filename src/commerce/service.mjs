@@ -1,18 +1,27 @@
 import {randomUUID} from 'node:crypto';
-import {customerInput,sha,validSignature,uuidPattern,paymentUpdate} from '../checkout/core.mjs';
+import {sha,validSignature,uuidPattern,paymentUpdate} from '../checkout/core.mjs';
 import {publishedSnapshot} from '../management/catalogue.mjs';
 import {requireThat as need} from '../management/errors.mjs';
 import {price,publicOrder} from './model.mjs';
-export function commerceService({repo,store,provider,config}){
+import {deliveryCustomer,deliveryHash,lookupPin} from './delivery.mjs';
+export function commerceService({repo,store,provider,config,pinLookup=lookupPin}){
  const owned=async(id,guest)=>{need(uuidPattern.test(id||''),404,'ORDER_NOT_FOUND','Order not found.');const o=await store.get(id);need(o&&o.mode===config.mode&&o.guest_hash===sha(guest),404,'ORDER_NOT_FOUND','Order not found in this browser.');return o;};
  const purchasesAllowed=()=>need(config.purchasesEnabled===true,503,'PURCHASES_DISABLED','New purchases are not available yet.');
- const quote=async items=>{purchasesAllowed();return price(items,await publishedSnapshot(repo),await store.policy(),config.mode);};
+ const checkedQuote=async(items,customer)=>{
+  const policy=await store.policy();
+  // Keep the existing database's independent total calculation consistent. Never
+  // substitute a made-up policy or silently overwrite shipping/tax settings.
+  need(policy?.shippingPaise===0&&policy.freeShippingAt===null,503,'DELIVERY_POLICY_REQUIRED','Delivery settings are unavailable. Please try again later. Your bag is unchanged.');
+  const q=price(items,await publishedSnapshot(repo),policy,config.mode);
+  return {...q,hash:sha(q.hash+':'+deliveryHash(customer))};
+ };
+ const quote=async(items,input)=>{purchasesAllowed();const customer=await deliveryCustomer(input,{lookup:pinLookup});return checkedQuote(items,customer);};
  const options=o=>config.purchasesEnabled===true&&o.status==='payment_pending'?{keyId:config.keyId,orderId:o.provider_id,amount:o.body.quote.total,currency:'INR'}:null;
  const result=(o,payment=null)=>({order:publicOrder(o),payment});
  async function create(input,guest){
   purchasesAllowed();
   need(/^[a-f0-9]{64}$/.test(input?.requestKey||''),422,'INVALID_REQUEST','Reload checkout before submitting.');
-  const customer=customerInput(input.customer),q=await quote(input.items);
+  const customer=await deliveryCustomer(input.customer,{lookup:pinLookup}),q=await checkedQuote(input.items,customer);
   need(q.hash===input.quoteHash,409,'QUOTE_CHANGED','Prices or settings changed. Review your total again.');
   const body={mode:config.mode,customer,quote:q},fingerprint=sha(JSON.stringify(body));
   const saved=await store.create({id:randomUUID(),guest:sha(guest),key:input.requestKey,fingerprint,body});

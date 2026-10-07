@@ -1,22 +1,36 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID,createHmac} from 'node:crypto';
-import {setup,sql,literal,LocalRepository,seedProduct,seedPolicy} from './local-postgres.mjs';
+import {setup,sql,literal,LocalRepository,seedProduct,seedPolicy,fixturePinLookup} from './local-postgres.mjs';
 import {CommerceStore} from '../../src/commerce/store.mjs';
 import {commerceService} from '../../src/commerce/service.mjs';
 import {GatewayError} from '../../src/checkout/gateway-errors.mjs';
 import {sha} from '../../src/checkout/core.mjs';
-const customer={name:'Fixture Buyer',email:'fixture@example.invalid',phone:'9876543210',line1:'123 Fixture Road',line2:'',city:'Mumbai',state:'Maharashtra',postalCode:'400001',country:'IN'};
+const customer={name:'Fixture Buyer',email:'fixture@example.invalid',phone:'9876543210',line1:'123 Fixture Road',line2:'',city:'Bengaluru',state:'Karnataka',postalCode:'560001',country:'IN'};
 await setup();await seedPolicy();await seedPolicy('live');
 const repo=new LocalRepository();
 function harness(mode='test'){
  const config={purchasesEnabled:true,mode,keyId:'rzp_'+mode+'_fixture',keySecret:'fixture-secret',webhookSecret:'w'.repeat(32)};
  const store=new CommerceStore(repo,mode);let creates=0,orders=new Map(),payments=[];
  const provider={async create(o){creates++;const id='order_'+o.id.replaceAll('-','');orders.set(id,{id,receipt:o.id,amount:o.body.quote.total,currency:'INR',status:'created',notes:{khaga_order_id:o.id,khaga_mode:mode}});return id;},async findOrder(o){return [...orders.values()].find(x=>x.receipt===o.id)||null;},async order(o){return orders.get(o.provider_id);},async payments(){return payments;},async payment(id){return payments.find(p=>p.id===id);},async request(path){return orders.get(path.split('/').pop());}};
- const service=commerceService({repo,store,provider,config});
+ const service=commerceService({repo,store,provider,config,pinLookup:fixturePinLookup});
  return {config,store,provider,service,get creates(){return creates;},set payments(p){payments=p;}};
 }
-async function input(h,capacity=3){const id='fixture-'+randomUUID();await seedProduct(id,capacity);const items=[{product:id,colour:'ivory',size:'M',quantity:1}];return {customer,items,quoteHash:(await h.service.quote(items)).hash,requestKey:sha(randomUUID())};}
+async function input(h,capacity=3){const id='fixture-'+randomUUID();await seedProduct(id,capacity);const items=[{product:id,colour:'ivory',size:'M',quantity:1}];return {customer,items,quoteHash:(await h.service.quote(items,customer)).hash,requestKey:sha(randomUUID())};}
+test('delivery rejection leaves actual order and reservation tables unchanged',async()=>{
+ const h=harness(),body=await input(h),guest=randomUUID();
+ const counts=()=>sql('SELECT (SELECT count(*) FROM khaga_private.commerce_orders)::text || \',\' || (SELECT count(*) FROM khaga_private.commerce_reservations)::text');
+ const before=await counts();
+ for(const [change,code] of [
+  [{state:'Maharashtra',postalCode:'400001'},'DELIVERY_UNSUPPORTED'],
+  [{country:'US',state:'California',postalCode:'90210'},'DELIVERY_UNSUPPORTED'],
+  [{postalCode:'400001'},'INVALID_ADDRESS'],
+  [{postalCode:'999999'},'INVALID_ADDRESS'],
+  [{postalCode:'560002'},'DELIVERY_LOOKUP_UNAVAILABLE'],
+  [{line1:'456 Changed Fixture Road'},'QUOTE_CHANGED'],
+ ])await assert.rejects(h.service.create({...body,customer:{...customer,...change}},guest),{code});
+ assert.equal(await counts(),before);assert.equal(h.creates,0);
+});
 test('migration reruns, legacy tables preserved, public RPC denied',async()=>{
  await setup();assert.equal(await sql("SELECT has_function_privilege('anon','public.khaga_commerce(text,text,jsonb)','EXECUTE')"),'f');
  assert.equal(await sql("SELECT has_function_privilege('service_role','khaga_private.close_uncreated_order(uuid,text)','EXECUTE')"),'f');
@@ -70,10 +84,10 @@ test('live pathway uses separate credentials, order namespace and reservation ca
 test('database rejects stale authoritative prices and conflicting idempotency payloads',async()=>{
  const h=harness(),body=await input(h),guest=randomUUID(),r=await h.service.create(body,guest);
  await assert.rejects(h.service.create({...body,customer:{...customer,name:'Different Buyer'}},guest),{code:'IDEMPOTENCY_CONFLICT'});
- const q=await h.service.quote(body.items);
+ const q=await h.service.quote(body.items,customer);
  await sql(`UPDATE khaga_private.documents SET body=jsonb_set(body,'{published,price}','200000') WHERE id=${literal(body.items[0].product)}`);
  await assert.rejects(h.store.create({id:randomUUID(),guest:sha(randomUUID()),key:sha(randomUUID()),fingerprint:sha('fixture'),body:{mode:'test',customer,quote:q}}));
- assert.equal((await h.store.get(r.order.id)).body.quote.total,110000);
+ assert.equal((await h.store.get(r.order.id)).body.quote.total,100000);
 });
 test('operator-reviewed unknown closure retains record and allows a new attempt',async()=>{
  const h=harness(),body=await input(h,1),guest=randomUUID();h.provider.create=async()=>{throw new GatewayError('PAYMENT_UNAVAILABLE');};

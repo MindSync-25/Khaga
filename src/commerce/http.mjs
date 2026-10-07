@@ -51,7 +51,7 @@ export function handlerFor(kind,getRuntime){return async(event,context={})=>{
    try{input=JSON.parse(raw.toString('utf8'));}catch{need(false,400,'INVALID_JSON','Invalid JSON.');}
    need(input&&typeof input==='object'&&!Array.isArray(input),422,'INVALID_REQUEST','Invalid request.');
   }
-  if(kind==='purchase'&&method==='POST'&&path==='/checkout/quote')return reply(200,await service.quote(input.items));
+  if(kind==='purchase'&&method==='POST'&&path==='/checkout/quote')return reply(200,await service.quote(input.items,input.customer));
   if(kind==='purchase'&&method==='POST'&&path==='/purchase')return reply(200,await service.create(input,value));
   if(kind==='confirm'&&method==='POST'&&path==='/confirm-purchase')return reply(200,await service.verify(input.id,value,input));
   const match=path.match(/^\/orders\/([a-f0-9-]{36})(\/reconcile)?$/);

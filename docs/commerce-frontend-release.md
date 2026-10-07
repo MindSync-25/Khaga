@@ -23,7 +23,7 @@ Hostinger's existing Node app settings: entry `server.mjs`, root `/`, Node 22, b
 
 | Setting | Prepared value / rule |
 | --- | --- |
-| `COMMERCE_API_BASE_URL` | Eventual exact value `https://commerce.slavant.com`, no trailing slash. Leave unset now; setting it enables the existing guest entry links and needs separate frontend release approval. |
+| `COMMERCE_API_BASE_URL` | Already configured by the owner as `https://commerce.slavant.com`. Preserve it during the approved closed release. |
 | Supabase / admin credentials | Preserve existing Hostinger settings privately; no new credentials or secrets in browser bundles. No secrets are supplied by this handoff. |
 | Lambda `LIVE_API_APPROVED` | Currently `true` after the authorised read-only check; this is not permission for a new provider request during frontend preparation. |
 | Lambda `PURCHASES_ENABLED` | Must remain `false` throughout this preparation and any separately approved closed release verification. |
@@ -45,16 +45,10 @@ Confirm together:
 
 1. The first product, colour, size and quantity; genuine sample approval; `stock` versus `preorder`; actual finite availability/capacity; dispatch range if preorder. Do not mark a sample approved just to pass checkout.
 2. The intended current published unit price and final payable total after approved shipping/tax. Existing observed prices: Origin Tee ₹2,990; Solar Tee ₹3,290; Flight Tee ₹3,490; Eclipse Tee ₹3,990; Ascent Tee ₹4,490; Form Shirt ₹5,990; Nocturne Shirt ₹6,990. Re-read before the first purchase; do not silently change them.
-3. Production shipping amount (`shippingPaise`) and optional free-shipping threshold (`freeShippingAt`, or null), for the supported India delivery flow.
+3. Shipping is already approved: `shippingPaise=0`, `freeShippingAt=null`, for verified Karnataka delivery. No reconfirmation is needed.
 4. Tax rate (`taxBps`), inclusive/exclusive treatment (`taxTreatment`), whether shipping is taxable (`taxShipping`), and customer-facing `taxNote`. No simulated zero values may be substituted.
 5. Live policy enabled/version state and approved delivery/returns/cancellation/refund/support promises. Any paid validation purchase needs an agreed payer and fulfilment handling plus explicit charge approval; public activation is a separate decision.
 
-The Live commerce policy is **not verified**, rather than assumed absent. Guest routes do not expose it while purchases are closed; there is no authenticated admin/Supabase connection available to this session, and no broader secret/IAM access was requested. The successful session checks the commerce-list RPC, not the policy contents. The owner can read the existing row through their already-authorised Supabase SQL editor without rerunning any migration:
+The owner reports their last SQL query found **no Live commerce_policy row**. Do not describe a complete approved existing policy as confirmed. KHAGA is currently not GST-registered according to the owner; do not label garments GST-exempt or promote simulated tax values. The remaining policy fields are taxBps, taxTreatment, taxShipping, truthful taxNote, and version/enabled state. This closed release does not create a policy or enable purchases.
 
-```sql
-select mode, settings
-from khaga_private.commerce_policy
-where mode = 'live';
-```
-
-Return only those non-secret business settings for review; no keys, cookies, customer/order rows or service credentials are needed. If there is no row, report that result before preparing any approved policy write.
+Current release configuration: the owner confirms `COMMERCE_API_BASE_URL=https://commerce.slavant.com` is already set in KHAGA. Preserve it. If Hostinger access is unavailable, the remaining frontend release step is the existing **Redeploy** button after merge; do not ask the owner to configure this variable again. AWS deployment and Hostinger deployment must be reported separately.

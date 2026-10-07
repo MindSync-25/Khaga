@@ -1,4 +1,5 @@
 // Disposable LOCAL database harness. Never use this against Supabase/production.
+import {HttpError} from '../../src/management/errors.mjs';
 import {products as seedProducts} from '../../src/catalog.mjs';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
@@ -21,4 +22,10 @@ export async function seedProduct(id,capacity=3){
  await sql(`INSERT INTO khaga_private.documents VALUES('product',${literal(id)},1,${literal(JSON.stringify({published:p,draft:p}))},0) ON CONFLICT(kind,id) DO UPDATE SET body=excluded.body;`);
  return p;
 }
-export async function seedPolicy(mode='test'){await sql(`INSERT INTO khaga_private.commerce_policy VALUES(${literal(mode)},${literal(JSON.stringify({...policy,mode}))}) ON CONFLICT(mode) DO UPDATE SET settings=excluded.settings`);}
+export const deliveryPolicy={...policy,shippingPaise:0,freeShippingAt:null};
+export const fixturePinLookup=async pin=>{
+ if(pin==='560002')throw Error('Fixture lookup outage');
+ if(pin==='999999')throw new HttpError(422,'INVALID_ADDRESS','We couldn’t find that PIN code. Please check your delivery address.');
+ return pin==='560001'?{state:'Karnataka'}:pin==='400001'?{state:'Maharashtra'}:null;
+};
+export async function seedPolicy(mode='test'){await sql(`INSERT INTO khaga_private.commerce_policy VALUES(${literal(mode)},${literal(JSON.stringify({...deliveryPolicy,mode}))}) ON CONFLICT(mode) DO UPDATE SET settings=excluded.settings`);}

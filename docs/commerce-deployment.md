@@ -1,5 +1,7 @@
 # Single production commerce deployment
 
+> Current status (2026-10-07): production stack and read-only Live authentication succeeded. The owner reports migration 003, certificate/domain/DNS and enabled Live webhook setup complete; do not rerun or recreate them. Hosted DNS/TLS/CORS/session and closed-purchase checks now pass. See [actual evidence](commerce-verification.md#hosted-connectivity-2026-10-07) and [frontend release preparation](commerce-frontend-release.md). `LiveApiApproved=true`, `PurchasesEnabled=false`; no new payment request or frontend activation is authorised by this status. The setup sections below are reference instructions, not remaining work to repeat.
+
 **Current scope supersedes all earlier Test-stack deployment instructions. Do not apply the old Test administrator bundle.** Continue draft PR #5 and the implemented guest checkout. Deploy one stack only; local tests retain Test/Live fixtures but do not require any additional AWS environment.
 
 | Setting | Production target |
